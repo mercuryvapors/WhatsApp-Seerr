@@ -2,8 +2,7 @@ version: "3.8"
 
 services:
   whatsapp-seerr:
-    build: .
-    image: whatsapp-seerr:latest
+    image: ghcr.io/mercuryvapors/whatsapp-seerr:latest
     container_name: whatsapp-seerr
     restart: unless-stopped
     ports:
