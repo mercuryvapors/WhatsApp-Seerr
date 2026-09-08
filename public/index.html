@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Seerr Bridge</title>
+  <style>
+    :root {
+      --bg: #0f1218;
+      --card: #1a1f2e;
+      --border: #2c3344;
+      --text: #e6e9ef;
+      --muted: #8a93a6;
+      --accent: #25d366;
+      --accent-2: #6463c7;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --warning: #f59e0b;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .container { max-width: 980px; margin: 0 auto; padding: 32px 24px; }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 28px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+    }
+    h1 { font-size: 22px; font-weight: 600; }
+    .subtitle { color: var(--muted); font-size: 13px; margin-top: 2px; }
+    .status-pills {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--card);
+    }
+    .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .dot.online { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .dot.offline { background: var(--danger); }
+    .dot.pending { background: var(--warning); }
+    .pill.wa-ready { border-color: var(--success); }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px;
+    }
+    .card h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card h2 .emoji { font-size: 18px; }
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      margin-top: 14px;
+    }
+    input[type="text"], input[type="password"], input[type="number"], select {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      margin-top: 8px;
+    }
+    .switch {
+      position: relative;
+      width: 48px; height: 27px;
+      display: inline-block;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: var(--border);
+      border-radius: 27px;
+      transition: .3s;
+    }
+    .slider:before {
+      content: '';
+      position: absolute;
+      height: 21px; width: 21px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: .3s;
+    }
+    .switch input:checked + .slider { background: var(--accent); }
+    .switch input:checked + .slider:before { transform: translateX(21px); }
+    .switch-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: .2s;
+      color: #fff;
+    }
+    .btn.primary { background: var(--accent); }
+    .btn.primary:hover { filter: brightness(1.1); }
+    .btn.secondary { background: var(--accent-2); }
+    .btn.secondary:hover { filter: brightness(1.1); }
+    .btn.danger { background: var(--danger); }
+    .btn.danger:hover { background: #c0392b; }
+    .btn.outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn.outline:hover { border-color: var(--muted); }
+    .btn-row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+    .btn-row .btn { flex: 1; min-width: 120px; }
+    #saveBtn { width: 100%; margin-top: 24px; padding: 13px; font-size: 15px; }
+    .toast {
+      position: fixed;
+      bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      padding: 14px 24px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      opacity: 0;
+      transition: .3s;
+      z-index: 100;
+      color: #fff;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+    .toast.success { background: var(--success); }
+    .toast.error { background: var(--danger); }
+    .toast.info { background: var(--accent-2); }
+    .qr-box {
+      margin-top: 16px;
+      background: #fff;
+      padding: 16px;
+      border-radius: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 60px;
+    }
+    .qr-box img { max-width: 240px; width: 100%; }
+    .qr-text { color: var(--bg); font-size: 13px; text-align: center; }
+    .section-divider { height: 1px; background: var(--border); margin: 18px 0; }
+    #qrLoading { color: var(--muted); font-size: 14px; text-align: center; }
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .tag {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tag .remove {
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .tag .remove:hover { color: var(--danger); }
+    .tag-input-row { display: flex; gap: 8px; }
+    .tag-input-row input { flex: 1; }
+    .tag-input-row .btn { padding: 10px 14px; }
+    .status-field {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      font-size: 14px;
+    }
+    .status-field span:first-child { color: var(--muted); }
+    .status-field .val { font-weight: 500; }
+    .diag-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .diag-row:last-child { border-bottom: none; }
+    .diag-row .name { color: var(--muted); flex-shrink: 0; }
+    .diag-row .detail { text-align: right; color: var(--text); word-break: break-word; }
+    #debugLog {
+      max-height: 460px;
+      overflow-y: auto;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .debug-entry {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: var(--bg);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .debug-entry .dh {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .debug-entry .tag {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      flex-shrink: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .tag.seerr-request { background: rgba(100,99,199,.2); color: #b9b8ef; }
+    .tag.whatsapp-recv { background: rgba(37,211,102,.15); color: var(--accent); }
+    .tag.whatsapp-command { background: rgba(245,158,11,.15); color: var(--warning); }
+    .tag.whatsapp-reply { background: rgba(34,197,94,.15); color: var(--success); }
+    .tag.self-test { background: rgba(139,92,246,.2); color: #c4b5fd; }
+    .tag.system { background: rgba(138,147,166,.15); color: var(--muted); }
+    .debug-entry .time { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+    .debug-entry .line { color: var(--text); }
+    .debug-entry .line .k { color: var(--muted); }
+    .debug-entry .resp-ok { color: var(--success); }
+    .debug-entry .resp-fail { color: var(--danger); }
+    .diag-badge {
+      display: inline-block;
+      min-width: 24px;
+      text-align: center;
+      border-radius: 6px;
+      padding: 1px 6px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .diag-badge.ok { background: rgba(34,197,94,.15); color: var(--success); }
+    .diag-badge.fail { background: rgba(239,68,68,.15); color: var(--danger); }
+    .diag-badge.warn { background: rgba(245,158,11,.15); color: var(--warning); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-icon">WS</div>
+        <div>
+          <h1>WhatsApp Seerr Bridge</h1>
+          <div class="subtitle">Request media to Seerr from WhatsApp</div>
+        </div>
+      </div>
+      <div class="status-pills">
+        <div class="pill" id="waPill">
+          <span class="dot" id="waDot"></span>
+          <span id="waStatusText">WhatsApp: —</span>
+        </div>
+        <div class="pill" id="seerrPill">
+          <span class="dot" id="seerrDot"></span>
+          <span id="seerrStatusText">Seerr: —</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div class="card">
+        <h2><span class="emoji">🤖</span> WhatsApp Settings</h2>
+        <div class="switch-row">
+          <div class="switch-label">Enable WhatsApp Bot</div>
+          <label class="switch">
+            <input type="checkbox" id="waEnabled">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <label for="waPrefix">Command Prefix</label>
+        <input type="text" id="waPrefix" placeholder="!" value="!">
+        <div class="hint">Messages starting with this prefix are treated as commands (e.g. !request).</div>
+
+        <div class="switch-row" style="margin-top:16px;">
+          <div class="switch-label">Allow self-test (message yourself)</div>
+          <label class="switch">
+            <input type="checkbox" id="waSelf">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="hint">
+          When enabled, messages you send to your own number are treated as commands — handy for testing
+          (e.g. send <code>!request Dune</code> to yourself).
+        </div>
+
+        <div class="section-divider"></div>
+
+        <label>Allowed Phone Numbers</label>
+        <div class="tag-input-row">
+          <input type="text" id="newNumber" placeholder="e.g. 15551234567">
+          <button class="btn secondary" onclick="addNumber()">Add</button>
+        </div>
+        <div class="hint">Only these numbers can use the bot. Leave empty to allow everyone.</div>
+        <div class="tag-list" id="numberTags"></div>
+
+        <div class="btn-row">
+          <button class="btn primary" id="waStartBtn" onclick="startWhatsApp()">▶ Connect WhatsApp</button>
+          <button class="btn danger" id="waStopBtn" onclick="stopWhatsApp()">■ Disconnect</button>
+        </div>
+        <div class="qr-box" id="qrBox" style="display:none;">
+          <div id="qrLoading">Waiting for QR code...</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="emoji">🎬</span> Seerr Settings</h2>
+        <div class="switch-row">
+          <div class="switch-label">Enable Seerr Integration</div>
+          <label class="switch">
+            <input type="checkbox" id="srEnabled">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <label for="srUrl">Seerr URL</label>
+        <input type="text" id="srUrl" placeholder="http://192.168.1.100:5055">
+        <div class="hint">Overseerr or Jellyseerr instance base URL.</div>
+
+        <label for="srKey">API Key</label>
+        <input type="text" id="srKey" placeholder="API key from Seerr settings">
+        <div class="hint">Find in Overseerr/Jellyseerr → Settings → General → API Key.</div>
+
+        <button class="btn secondary" style="width:100%; margin-top:16px;" id="seerrTestBtn" onclick="testSeerr()">🔌 Test Seerr Connection</button>
+        <div id="seerrTestResult" style="display:none; margin-top:14px;">
+          <div id="seerrTestList"></div>
+        </div>
+
+        <div class="section-divider"></div>
+        <label>Bot behavior</label>
+        <div class="hint">
+          Users can request with: <code>!request Title</code>, <code>!request movie Title</code>, or <code>!request tv Title</code>.
+          The bot will search Seerr and submit the request automatically.
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 20px;">
+      <h2><span class="emoji">⚙️</span> General Settings</h2>
+      <div class="grid">
+        <div>
+          <label for="appName">App Name</label>
+          <input type="text" id="appName" placeholder="WhatsApp Seerr Bridge">
+        </div>
+        <div>
+          <label for="serverPort">Web UI Port</label>
+          <input type="number" id="serverPort" placeholder="7000">
+        </div>
+      </div>
+    </div>
+
+    <button class="btn primary" id="saveBtn" onclick="saveConfig()">💾 Save &amp; Apply</button>
+
+    <div class="card" style="margin-top: 20px;" id="debugCard">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <h2 style="margin:0;"><span class="emoji">🐞</span> Debug Window</h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <label class="switch-label" style="font-size:13px;">
+            <input type="checkbox" id="autoRefreshDbg" checked onchange="toggleAutoRefresh()">
+            Live
+          </label>
+          <button class="btn outline" style="padding:6px 12px; font-size:12px;" onclick="clearDebug()">Clear</button>
+          <button class="btn outline" style="padding:6px 12px; font-size:12px; background:var(--card); border:1px solid var(--border); color:var(--text);" onclick="toggleDebug()">− Collapse</button>
+        </div>
+      </div>
+      <div id="debugBody" style="margin-top:14px;">
+        <div class="hint" style="margin-bottom:10px;">
+          Shows Seerr API traffic and WhatsApp command activity. Latest 300 entries, most recent at the top.
+        </div>
+        <div id="debugLog">
+          <div class="hint">No entries yet. Send a request via WhatsApp or click Test Seerr Connection.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let config = {};
+    let statusTimer = null;
+
+    function toast(msg, type='info') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast ' + type + ' show';
+      setTimeout(() => t.className = 'toast ' + type, 2500);
+    }
+
+    async function fetchJSON(url, opts) {
+      const res = await fetch(url, opts);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text);
+      }
+      return res.json();
+    }
+
+    async function loadConfig() {
+      try {
+        config = await fetchJSON('/api/config');
+        document.getElementById('waEnabled').checked = !!config.whatsapp.enabled;
+        document.getElementById('waPrefix').value = config.whatsapp.commandPrefix || '!';
+        document.getElementById('waSelf').checked = config.whatsapp.allowSelfMessages !== false;
+        document.getElementById('srEnabled').checked = !!config.seerr.enabled;
+        document.getElementById('srUrl').value = config.seerr.url || '';
+        document.getElementById('srKey').value = config.seerr.apiKey || '';
+        document.getElementById('appName').value = config.app.name || '';
+        document.getElementById('serverPort').value = config.server.port || 7000;
+        renderNumbers(config.whatsapp.allowedNumbers || []);
+      } catch (e) {
+        toast('Failed to load config: ' + e.message, 'error');
+      }
+    }
+
+    function renderNumbers(nums) {
+      const container = document.getElementById('numberTags');
+      container.innerHTML = '';
+      if (!nums || nums.length === 0) {
+        container.innerHTML = '<div class="hint">No numbers restricted — everyone allowed.</div>';
+        return;
+      }
+      nums.forEach((n, i) => {
+        const tag = document.createElement('div');
+        tag.className = 'tag';
+        tag.innerHTML = `<span>${n}</span><span class="remove" onclick="removeNumber(${i})">×</span>`;
+        container.appendChild(tag);
+      });
+    }
+
+    function addNumber() {
+      const input = document.getElementById('newNumber');
+      const num = input.value.trim();
+      if (!num) return;
+      const nums = config.whatsapp.allowedNumbers || [];
+      const clean = num.replace(/\D/g, '');
+      if (clean && !nums.includes(clean)) nums.push(clean);
+      config.whatsapp.allowedNumbers = nums;
+      input.value = '';
+      renderNumbers(nums);
+    }
+
+    function removeNumber(i) {
+      config.whatsapp.allowedNumbers.splice(i, 1);
+      renderNumbers(config.whatsapp.allowedNumbers);
+    }
+
+    async function saveConfig() {
+      const payload = {
+        whatsapp: {
+          enabled: document.getElementById('waEnabled').checked,
+          commandPrefix: document.getElementById('waPrefix').value || '!',
+          allowSelfMessages: document.getElementById('waSelf').checked,
+          allowedNumbers: config.whatsapp.allowedNumbers || []
+        },
+        seerr: {
+          enabled: document.getElementById('srEnabled').checked,
+          url: document.getElementById('srUrl').value.trim(),
+          apiKey: document.getElementById('srKey').value.trim()
+        },
+        app: {
+          name: document.getElementById('appName').value || 'WhatsApp Seerr Bridge'
+        },
+        server: {
+          port: parseInt(document.getElementById('serverPort').value) || 7000
+        }
+      };
+      try {
+        await fetchJSON('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        config = (await fetchJSON('/api/config'));
+        toast('Configuration saved & applied', 'success');
+        refreshStatus();
+      } catch (e) {
+        toast('Failed to save: ' + e.message, 'error');
+      }
+    }
+
+    async function startWhatsApp() {
+      try {
+        await saveValidated();
+        const res = await fetchJSON('/api/whatsapp/start', { method: 'POST' });
+        toast('WhatsApp connecting...', 'info');
+        document.getElementById('waEnabled').checked = true;
+        startQrPolling();
+        refreshStatus();
+      } catch (e) {
+        toast('Failed to start: ' + e.message, 'error');
+      }
+    }
+
+    async function stopWhatsApp() {
+      try {
+        await fetchJSON('/api/whatsapp/stop', { method: 'POST' });
+        toast('WhatsApp disconnected', 'info');
+        document.getElementById('waEnabled').checked = false;
+        hideQr();
+        refreshStatus();
+      } catch (e) {
+        toast('Failed to stop: ' + e.message, 'error');
+      }
+    }
+
+    async function saveValidated() {
+      const payload = {
+        whatsapp: {
+          enabled: true,
+          commandPrefix: document.getElementById('waPrefix').value || '!',
+          allowSelfMessages: document.getElementById('waSelf').checked,
+          allowedNumbers: config.whatsapp.allowedNumbers || []
+        },
+        seerr: {
+          enabled: document.getElementById('srEnabled').checked,
+          url: document.getElementById('srUrl').value.trim(),
+          apiKey: document.getElementById('srKey').value.trim()
+        },
+        app: { name: document.getElementById('appName').value || 'WhatsApp Seerr Bridge' },
+        server: { port: parseInt(document.getElementById('serverPort').value) || 7000 }
+      };
+      await fetchJSON('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      config = await fetchJSON('/api/config');
+    }
+
+    function startQrPolling() {
+      const box = document.getElementById('qrBox');
+      box.style.display = 'flex';
+      document.getElementById('qrLoading').textContent = 'Waiting for QR code...';
+      document.getElementById('qrLoading').classList.remove('qr-text');
+      if (window._qrTimer) clearInterval(window._qrTimer);
+      window._qrTimer = setInterval(checkQr, 2000);
+      checkQr();
+    }
+
+    async function checkQr() {
+      try {
+        const status = await fetchJSON('/api/status');
+        const wa = status.whatsapp;
+        if (wa.qr && !window._qrRendered) {
+          window._qrRendered = true;
+          renderQr(wa.qr);
+        }
+        if (wa.status === 'ready') {
+          if (window._qrTimer) { clearInterval(window._qrTimer); window._qrTimer = null; }
+          document.getElementById('qrBox').style.display = 'none';
+          window._qrRendered = false;
+          refreshStatus();
+        }
+      } catch (e) { }
+    }
+
+    function renderQr(qr) {
+      const box = document.getElementById('qrBox');
+      box.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = '/api/whatsapp/qr.png';
+      img.alt = 'WhatsApp QR code';
+      img.onclick = () => { img.src = '/api/whatsapp/qr.png?t=' + Date.now(); };
+      box.appendChild(img);
+    }
+
+    function hideQr() {
+      const box = document.getElementById('qrBox');
+      box.style.display = 'none';
+      box.innerHTML = '<div id="qrLoading">Waiting for QR code...</div>';
+    }
+
+    async function refreshStatus() {
+      try {
+        const status = await fetchJSON('/api/status');
+        const wa = status.whatsapp;
+        const se = status.seerr;
+
+        const waDot = document.getElementById('waDot');
+        const waText = document.getElementById('waStatusText');
+        const waPill = document.getElementById('waPill');
+
+        let waLabel = 'WA: idle';
+        let waClass = '';
+        if (!config.whatsapp.enabled) { waLabel = 'WA: disabled'; waClass = ''; }
+        else if (wa.status === 'ready') { waLabel = 'WA: online'; waClass = 'wa-ready'; }
+        else if (wa.status === 'connecting') { waLabel = 'WA: connecting'; }
+        else if (wa.status === 'waiting_qr') { waLabel = 'WA: scan QR'; }
+        else if (wa.status === 'disconnected') { waLabel = 'WA: disconnected'; }
+        else if (wa.status === 'auth_failure') { waLabel = 'WA: auth failed'; }
+        else { waLabel = 'WA: ' + (wa.status || 'idle'); }
+
+        waText.textContent = waLabel;
+
+        waDot.className = 'dot';
+        if (wa.status === 'ready') waDot.classList.add('online');
+        else if (wa.status === 'connecting' || wa.status === 'waiting_qr') waDot.classList.add('pending');
+        else if (wa.status === 'disconnected' || wa.status === 'auth_failure' || wa.status === 'error') waDot.classList.add('offline');
+
+        document.getElementById('seerrDot').className = 'dot' + (se.enabled ? ' online' : ' offline');
+        document.getElementById('seerrStatusText').textContent = se.enabled ? 'Seerr: online' : 'Seerr: off';
+      } catch (e) { }
+    }
+
+    async function testSeerr() {
+      const box = document.getElementById('seerrTestResult');
+      const list = document.getElementById('seerrTestList');
+      const btn = document.getElementById('seerrTestBtn');
+      box.style.display = 'block';
+      list.innerHTML = '<div class="hint">Testing…</div>';
+      btn.disabled = true;
+      try {
+        const r = await fetchJSON('/api/test/seerr', { method: 'POST' });
+        list.innerHTML = '';
+        if (r.checks) {
+          r.checks.forEach((c) => {
+            const row = document.createElement('div');
+            row.className = 'diag-row';
+            const badge = c.ok ? 'ok' : 'fail';
+            row.innerHTML =
+              `<span class="name">${c.name}</span>` +
+              `<span class="detail"><span class="diag-badge ${badge}">${c.ok ? '✓' : '✕'}</span> ${c.detail || ''}</span>`;
+            list.appendChild(row);
+          });
+        }
+        toast(r.ok ? 'Seerr connection OK' : 'Seerr connection failed', r.ok ? 'success' : 'error');
+      } catch (e) {
+        list.innerHTML = '';
+        list.innerHTML = `<div class="diag-row"><span class="name">Test failed</span><span class="detail"><span class="diag-badge fail">✕</span> ${e.message}</span></div>`;
+        toast('Test failed: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function escHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function fmtTime(ts) {
+      const d = new Date(ts);
+      return d.toLocaleTimeString([], { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+    }
+
+    async function refreshDebug(forceScroll) {
+      try {
+        const logs = await fetchJSON('/api/debug/logs');
+        const container = document.getElementById('debugLog');
+        const wasAtBottom = forceScroll || (container.scrollTop + container.clientHeight >= container.scrollHeight - 5);
+
+        if (logs.length === 0) {
+          container.innerHTML = '<div class="hint">No entries yet. Send a request via WhatsApp or click Test Seerr Connection.</div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        for (const e of logs.slice().reverse()) {
+          const div = document.createElement('div');
+          div.className = 'debug-entry';
+
+          let detail = '';
+          let statusLine = '';
+          if (e.dir === 'seerr-request') {
+            const statusColor = e.status >= 200 && e.status < 300 ? 'resp-ok' : (e.status ? 'resp-fail' : 'resp-fail');
+            const statusTxt = e.status ? e.status : (e.error ? 'ERR' : '—');
+            detail =
+              `<div class="line"><span class="k">${e.method || 'GET'}</span> ${escHtml(e.path)}</div>` +
+              (e.requestBody ? `<div class="line"><span class="k">body:</span> ${escHtml(e.requestBody)}</div>` : '') +
+              `<div class="line"><span class="k">res:</span> <span class="${statusColor}">${statusTxt}</span> <span class="k">${e.durationMs}ms</span>` +
+              (e.response ? ` — ${escHtml(e.response)}` : '') + '</div>' +
+              (e.error ? `<div class="line resp-fail">${escHtml(e.error)}</div>` : '');
+          } else if (e.dir === 'whatsapp-recv') {
+            detail = `<div class="line"><span class="k">number:</span> ${escHtml(e.number)} <span class="k">msg:</span> ${escHtml(e.body)}</div>`;
+          } else if (e.dir === 'whatsapp-command') {
+            detail = `<div class="line"><span class="k">number:</span> ${escHtml(e.number)} <span class="k">cmd:</span> !${escHtml(e.cmd)}${e.args ? ' <span class="k">args:</span> ' + escHtml(e.args) : ''}</div>`;
+          } else if (e.dir === 'whatsapp-reply') {
+            detail = `<div class="line"><span class="k">to:</span> ${escHtml(e.number)} <span class="k">reply:</span> ${escHtml(e.body)}</div>`;
+          } else if (e.dir === 'self-test') {
+            detail = `<div class="line"><span class="k">self message:</span> ${escHtml(e.body)}</div>`;
+          } else if (e.dir === 'system') {
+            detail = `<div class="line"><span class="k">${escHtml(e.event || 'event')}</span> ${escHtml(e.detail || '')}</div>`;
+          }
+
+          div.innerHTML =
+            `<div class="dh"><span class="tag ${e.dir}">${escHtml(e.dir)}</span><span class="time">${fmtTime(e.ts)}</span></div>` + detail;
+          container.appendChild(div);
+        }
+
+        if (wasAtBottom) container.scrollTop = container.scrollHeight;
+      } catch (e) { }
+    }
+
+    function toggleAutoRefresh() {
+      if (document.getElementById('autoRefreshDbg').checked && !window._dbgTimer) {
+        window._dbgTimer = setInterval(() => refreshDebug(true), 2000);
+        refreshDebug(true);
+      } else if (!document.getElementById('autoRefreshDbg').checked) {
+        if (window._dbgTimer) { clearInterval(window._dbgTimer); window._dbgTimer = null; }
+      }
+    }
+
+    function toggleDebug() {
+      const body = document.getElementById('debugBody');
+      const btn = document.querySelector('#debugCard button[onclick="toggleDebug()"]');
+      if (body.style.display === 'none') {
+        body.style.display = 'block';
+        btn.textContent = '− Collapse';
+        refreshDebug(true);
+      } else {
+        body.style.display = 'none';
+        btn.textContent = '+ Expand';
+      }
+    }
+
+    async function clearDebug() {
+      await fetchJSON('/api/debug/clear', { method: 'POST' });
+      refreshDebug();
+      toast('Debug log cleared', 'info');
+    }
+
+    document.getElementById('waEnabled').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        startWhatsApp();
+      } else {
+        stopWhatsApp();
+      }
+    });
+
+    document.getElementById('newNumber').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') addNumber();
+    });
+
+    (async function init() {
+      await loadConfig();
+      refreshStatus();
+      statusTimer = setInterval(refreshStatus, 5000);
+      toggleAutoRefresh();
+    })();
+  </script>
+</body>
+</html>
