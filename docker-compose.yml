@@ -4,6 +4,10 @@ services:
     container_name: whatsapp-seerr
     restart: unless-stopped
     network_mode: bridge
+    # Lets the container reach services on the Unraid host via
+    # http://host.docker.internal:5055 (e.g. Overseerr running on the host)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "7000:7000"
     # Unraid: labels drive the WebUI button shown on the Docker page

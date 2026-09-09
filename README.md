@@ -41,12 +41,24 @@ docker run -d \
   --name whatsapp-seerr \
   -p 7000:7000 \
   --shm-size=1gb \
+  --add-host host.docker.internal:host-gateway \
   -v $(pwd)/data:/data \
   --restart unless-stopped \
   ghcr.io/mercuryvapors/whatsapp-seerr:latest
 ```
 
 > **Note on `--shm-size=1gb`:** Chromium's renderer crashes with the Docker default 64MB `/dev/shm`, which shows up as *"Navigating frame was detached"*. The app also passes `--disable-dev-shm-usage` as a fallback, but the larger shared memory is the proper fix. If the container is started via the web UI/template, add `--shm-size=1gb` to the Extra Parameters.
+
+> **Note on the Seerr URL:** inside this container, `localhost` refers to the
+> container itself, not your Unraid host. If Overseerr/Jellyseerr runs on the
+> same host (or in another container on a **different** network):
+> - Use `http://host.docker.internal:5055` (the compose file and
+>   `docker run` above already define `host.docker.internal`).
+> - Or use the host's LAN IP, e.g. `http://192.168.1.50:5055`.
+>
+> If Seerr runs in a container on the **same** user-defined network as this
+> container, you can instead use its container name, e.g.
+> `http://overseerr:5055`.
 
 ### Step 2 — Configure in the web UI
 
