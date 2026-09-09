@@ -779,6 +779,9 @@
           } else if (e.dir === 'system') {
             detail = `<div class="line"><span class="k">${escHtml(e.event || 'event')}</span> ${escHtml(e.detail || '')}</div>`;
           }
+          if (e.reason) {
+            detail += `<div class="line resp-fail"><span class="k">why:</span> ${escHtml(e.reason)}</div>`;
+          }
 
           div.innerHTML =
             `<div class="dh"><span class="tag ${e.dir}">${escHtml(e.dir)}</span><span class="time">${fmtTime(e.ts)}</span></div>` + detail;

@@ -131,7 +131,12 @@ class WhatsAppBot {
 
     this.client.on('ready', () => {
       this.status = 'ready';
-      console.log('WhatsApp client is ready!');
+      let own = '';
+      try {
+        own = (this.client.info && this.client.info.wid && (this.client.info.wid.user || '')) || '';
+      } catch (_) {}
+      this.selfNumber = own.replace(/\D/g, '');
+      console.log('WhatsApp client is ready!' + (own ? ' (own number: ' + own + ')' : ''));
       if (this.callbacks.onReady) this.callbacks.onReady();
     });
 
@@ -143,6 +148,7 @@ class WhatsAppBot {
     });
 
     this.client.on('message', (message) => this.handleMessage(message));
+    this.client.on('message_create', (message) => this.handleMessage(message));
 
     await this.client.initialize();
   }
@@ -162,24 +168,37 @@ class WhatsAppBot {
 
   async handleMessage(message) {
     try {
-      if (!this.cfg.whatsapp || !this.cfg.whatsapp.enabled) return;
+      if (!this.cfg.whatsapp || !this.cfg.whatsapp.enabled) {
+        debug.log({ dir: 'whatsapp-recv', number: this._num(message), body: debug.truncate(message.body, 200), reason: 'skipped: bot disabled' });
+        return;
+      }
 
-      let number = message.from;
-      if (number && number.includes('@')) number = number.split('@')[0];
+      if (!this._isDeduped(message)) return;
 
-      const isSelfChat = message.fromMe && message.to && message.to === message.from;
+      const number = this._num(message);
+      const toNum = this._num({ from: message.to });
+      let isSelfChat = message.fromMe && !!number && (toNum === number || (!toNum && number === this.selfNumber));
       const allowSelf = this.cfg.whatsapp.allowSelfMessages !== false;
 
-      if (message.fromMe && !(allowSelf && isSelfChat)) return;
-
-      if (isSelfChat) {
-        debug.log({ dir: 'self-test', number, body: debug.truncate(message.body, 200) });
-      } else {
-        if (message.isGroup) return;
-        if (!this.isAllowedNumber(number)) return;
+      if (message.fromMe && !(allowSelf && isSelfChat)) {
+        debug.log({ dir: 'whatsapp-recv', number, body: debug.truncate(message.body, 200), reason: 'skipped: outgoing message not to self' });
+        return;
       }
 
       const text = (message.body || '').trim();
+      if (isSelfChat) {
+        debug.log({ dir: 'self-test', number, body: debug.truncate(message.body, 200) });
+      } else {
+        if (message.isGroup) {
+          debug.log({ dir: 'whatsapp-recv', number, body: debug.truncate(message.body, 200), reason: 'skipped: group message (groups not supported)' });
+          return;
+        }
+        if (!this.isAllowedNumber(number)) {
+          debug.log({ dir: 'whatsapp-recv', number, body: debug.truncate(message.body, 200), reason: 'skipped: number not in allowed list' });
+          return;
+        }
+      }
+
       debug.log({ dir: 'whatsapp-recv', number, body: debug.truncate(message.body, 200) });
       const prefix = this.cfg.whatsapp.commandPrefix || '!';
       if (!text.startsWith(prefix)) return;
@@ -197,7 +216,13 @@ class WhatsAppBot {
 
       const cmd = command.toLowerCase();
       debug.log({ dir: 'whatsapp-command', number, cmd, args: debug.truncate(args, 200) });
-      const chat = await message.getChat();
+
+      let chat = null;
+      try {
+        chat = await message.getChat();
+      } catch (e) {
+        console.warn('Could not resolve chat for message, continuing without it:', e.message);
+      }
 
       if (this.callbacks.onCommand) {
         await this.callbacks.onCommand({
@@ -210,13 +235,37 @@ class WhatsAppBot {
           isSelfTest: isSelfChat,
           reply: async (textMessage) => {
             debug.log({ dir: 'whatsapp-reply', number, body: debug.truncate(textMessage, 200) });
-            return message.reply(textMessage);
+            try {
+              return await message.reply(textMessage);
+            } catch (e) {
+              console.warn('message.reply failed, falling back to sendMessage:', e.message);
+              return this.client.sendMessage(message.from, textMessage);
+            }
           }
         });
       }
     } catch (e) {
       console.error('Error handling message:', e);
+      debug.log({ dir: 'whatsapp-recv', number: message.from || '?', body: debug.truncate(message.body, 200), reason: 'error: ' + e.message });
     }
+  }
+
+  _num(message) {
+    const from = message.from || '';
+    const idx = from.indexOf('@');
+    return idx >= 0 ? from.slice(0, idx) : from;
+  }
+
+  _isDeduped(message) {
+    const id = (message.id && (message.id.id || message.id._serialized)) || `${Date.now()}-${(message.body || '').slice(0, 20)}`;
+    if (this._seenMsgIds && this._seenMsgIds.has(id)) return false;
+    if (!this._seenMsgIds) this._seenMsgIds = new Set();
+    this._seenMsgIds.add(id);
+    if (this._seenMsgIds.size > 5000) {
+      const first = this._seenMsgIds.values().next().value;
+      this._seenMsgIds.delete(first);
+    }
+    return true;
   }
 }
 
