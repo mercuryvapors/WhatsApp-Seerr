@@ -1,0 +1,25 @@
+<Container version="2">
+  <Name>whatsapp-seerr</Name>
+  <Repository>ghcr.io/mercuryvapors/whatsapp-seerr:latest</Repository>
+  <Registry>https://github.com/mercuryvapors/WhatsApp-Seerr/pkgs/container/whatsapp-seerr</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/mercuryvapors/WhatsApp-Seerr/issues</Support>
+  <Project>https://github.com/mercuryvapors/WhatsApp-Seerr</Project>
+  <Overview>Bridge WhatsApp to Overseerr/Jellyseerr so users can request movies and TV shows from a WhatsApp chat. Includes a web UI for configuration.</Overview>
+  <Description>Connect a WhatsApp account and let users request media from chat. Features a full web UI for setup, an optional allowed-numbers whitelist, and persistent WhatsApp sessions (no re-scanning on restart).&lt;br /&gt;&lt;br /&gt;Add &lt;code&gt;--shm-size=1gb&lt;/code&gt; to Extra Parameters if the container logs &amp;quot;Navigating frame was detached&amp;quot; - Chromium&amp;#39;s renderer crashes with Docker&amp;#39;s default 64MB /dev/shm.&lt;br /&gt;&lt;br /&gt;Chat commands: &lt;code&gt;!request &amp;lt;title&amp;gt;&lt;/code&gt;, &lt;code&gt;!request movie &amp;lt;title&amp;gt;&lt;/code&gt;, &lt;code&gt;!request tv &amp;lt;title&amp;gt;&lt;/code&gt;, &lt;code&gt;!help&lt;/code&gt;.</Description>
+  <Category>MediaApp:Other</Category>
+  <WebUI>http://[IP]:[PORT:7000]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/mercuryvapors/WhatsApp-Seerr/main/templates/whatsapp-seerr.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/mercuryvapors/WhatsApp-Seerr/main/public/icon.png</Icon>
+  <ExtraSearchTerms>whatsapp overseerr jellyseerr seerr media request bridge bot</ExtraSearchTerms>
+  <Date>2026-09-08</Date>
+  <DateUpdated>2026-09-08</DateUpdated>
+  <MinVer>6.9.0</MinVer>
+  <License>MIT</License>
+  <Config Name="Web UI Port" Target="7000" Default="7000" Mode="tcp" Description="Web UI port. Add --shm-size=1gb to Extra Parameters if the container crashes." Type="Port" Display="always" Required="true" Mask="false">7000</Config>
+  <Config Name="Data Path" Target="/data" Default="/mnt/user/appdata/whatsapp-seerr" Mode="rw" Description="Config, session and QR data - keep persistent" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/whatsapp-seerr</Config>
+  <Config Name="PORT" Target="PORT" Default="7000" Mode="" Description="Internal HTTP port (matches Web UI Port)" Type="Variable" Display="advanced" Required="false" Mask="false">7000</Config>
+</Container>

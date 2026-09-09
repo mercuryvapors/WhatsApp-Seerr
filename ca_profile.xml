@@ -1,0 +1,8 @@
+<CommunityApplications>
+  <Profile>
+    A self-hosted bridge connecting WhatsApp to Overseerr/Jellyseerr. Users send request commands from WhatsApp chat and the bot submits them via the Seerr API. Maintained by mercuryvapors. Source and issue tracking live on GitHub; images are published to GitHub Container Registry.
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/mercuryvapors/WhatsApp-Seerr/main/public/icon.svg</Icon>
+  <WebPage>https://github.com/mercuryvapors/WhatsApp-Seerr</WebPage>
+  <Forum>https://github.com/mercuryvapors/WhatsApp-Seerr/discussions</Forum>
+</CommunityApplications>

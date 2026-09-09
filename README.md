@@ -68,13 +68,33 @@ Send a message to the linked WhatsApp number:
 
 ## Unraid
 
-1. Make sure the `ghcr.io/mercuryvapors/whatsapp-seerr` image is accessible. Add the container via the included `whatsapp-seerr.xml` template.
-2. Map the **Web UI Port** to host port `7000`.
-3. Map a **Data Path** to `/mnt/user/appdata/whatsapp-seerr` (keeps session + config persistent).
-4. In Advanced view, add `--shm-size=1gb` to **Extra Parameters** (see note above).
-5. Open the WebUI from the Unraid dashboard.
+### Install via Community Apps
 
-To install the template: copy `whatsapp-seerr.xml` to your flash drive at`/config/plugins/dockerMan/templates-user/`, then in Unraid WebUI go to**Docker → Add Container** and pick **WhatsAppSeerrBridge**.
+The app is packaged as a Community Apps template. Users on Unraid 7 can add
+this repository as a **custom template source** so it appears in the CA app
+list and installs with pre-populated fields (port, data path, env):
+
+1. In Unraid WebUI, open **Apps** → **Settings** → **Template Repositories**
+   (or the Community Applications plugin **Template Repositories** tab).
+2. Add the following GitHub repository:
+   `https://github.com/mercuryvapors/WhatsApp-Seerr`
+3. Update the app feed (Apps → Settings → **Update Apps/Feed**).
+4. Search for **whatsapp-seerr** in Apps, click the result, then **Install**.
+   The WebUI port, data path, and environment variables are applied
+   automatically from `templates/whatsapp-seerr.xml`.
+
+> A submission to the public Community Apps catalog (`ca.unraid.net`) is
+> prepared in this repo — see `ca_profile.xml` and `templates/`.
+
+### Manual install (without CA)
+
+Copy `templates/whatsapp-seerr.xml` to your flash drive at
+`/config/plugins/dockerMan/templates-user/`, then in Unraid WebUI go to
+**Docker → Add Container** and pick **whatsapp-seerr**.
+
+For both methods: map the **Web UI Port** to host `7000`, map a **Data Path**
+to `/mnt/user/appdata/whatsapp-seerr`, and in Advanced view add
+`--shm-size=1gb` to **Extra Parameters** (see the note above).
 
 ## Configuration
 
