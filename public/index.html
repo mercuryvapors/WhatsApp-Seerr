@@ -342,6 +342,9 @@
           <span class="dot" id="seerrDot"></span>
           <span id="seerrStatusText">Seerr: —</span>
         </div>
+        <div class="pill" id="buildPill" title="Git commit baked into this image">
+          <span id="buildStatusText">Build: —</span>
+        </div>
       </div>
     </header>
 
@@ -694,7 +697,20 @@
         else if (wa.status === 'auth_failure') { waLabel = 'WA: auth failed'; }
         else { waLabel = 'WA: ' + (wa.status || 'idle'); }
 
+        if (wa.status === 'ready') {
+          const poll = wa.selfChat && wa.selfChat.poller;
+          waLabel += ' (' + (poll || 'poll?') + ')';
+        }
+
         waText.textContent = waLabel;
+        waPill.title =
+          'selfNumber: ' + (wa.selfNumber || '?') +
+          ' | pollState: ' + ((wa.selfChat && wa.selfChat.pollState) || '?') +
+          ' | seen: ' + ((wa.selfChat && wa.selfChat.seenIds) || 0) +
+          ' | allowSelfMessages: ' + wa.allowSelfMessages;
+
+        document.getElementById('buildStatusText').textContent =
+          'Build: v' + (status.version || '?') + ' (' + (status.gitSha || 'dev') + ')';
 
         waDot.className = 'dot';
         if (wa.status === 'ready') waDot.classList.add('online');
