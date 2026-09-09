@@ -784,7 +784,7 @@
       try {
         const logs = await fetchJSON('/api/debug/logs');
         const container = document.getElementById('debugLog');
-        const wasAtBottom = forceScroll || (container.scrollTop + container.clientHeight >= container.scrollHeight - 5);
+        const wasAtTop = forceScroll || container.scrollTop <= 5;
 
         if (logs.length === 0) {
           container.innerHTML = '<div class="hint">No entries yet. Send a request via WhatsApp or click Test Seerr Connection.</div>';
@@ -837,7 +837,7 @@
           container.appendChild(div);
         }
 
-        if (wasAtBottom) container.scrollTop = container.scrollHeight;
+        if (wasAtTop) container.scrollTop = 0;
       } catch (e) { }
     }
 
