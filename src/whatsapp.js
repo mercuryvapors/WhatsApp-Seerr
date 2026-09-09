@@ -29,7 +29,12 @@ class WhatsAppBot {
       status: this.status,
       qr: this.qr,
       error: this.lastError,
-      configured: !!(this.cfg.whatsapp && this.cfg.whatsapp.enabled)
+      configured: !!(this.cfg.whatsapp && this.cfg.whatsapp.enabled),
+      selfChat: {
+        poller: this._poller ? 'running' : 'stopped',
+        pollState: this._pollerLogState || 'idle',
+        seenIds: this._pollSeen.size
+      }
     };
   }
 
@@ -144,6 +149,7 @@ class WhatsAppBot {
       } catch (_) {}
       this.selfNumber = own.replace(/\D/g, '');
       console.log('WhatsApp client is ready!' + (own ? ' (own number: ' + own + ')' : ''));
+      debug.log({ dir: 'system', event: 'whatsapp-ready', detail: 'client is ready' + (own ? ' (own number: ' + own + ')' : '') });
       this.startSelfChatPoller();
       if (this.callbacks.onReady) this.callbacks.onReady();
     });
@@ -211,6 +217,7 @@ class WhatsAppBot {
     if (this._poller) return;
     if (this.cfg.whatsapp && this.cfg.whatsapp.allowSelfMessages === false) {
       console.log('Self-chat poller disabled (allowSelfMessages is off).');
+      debug.log({ dir: 'system', event: 'self-chat-poller', detail: 'disabled — allowSelfMessages is off' });
       return;
     }
     this._poller = setInterval(() => this.pollSelfChat(), 4000);
