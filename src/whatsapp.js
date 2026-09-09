@@ -236,6 +236,21 @@ class WhatsAppBot {
     return !!(plain && plain === this.selfNumber);
   }
 
+  async resolveContactForSelf(message, chat) {
+    let contact = null;
+    if (chat) {
+      try { contact = await chat.getContact(); } catch (_) {}
+    }
+    if (!contact && message.to) {
+      try { contact = await this.client.getContactById(message.to); } catch (_) {}
+    }
+    if (!contact) return null;
+    const contactNumber = String(contact.number || '').replace(/\D/g, '');
+    const matchesNumber = !!(this.selfNumber && contactNumber && contactNumber === this.selfNumber);
+    if (!contact.isMe && !matchesNumber) return null;
+    return { self: true, chatId: (chat && chat.id && chat.id._serialized) || message.to || '' };
+  }
+
   _num(message) {
     const from = message.from || '';
     const idx = from.indexOf('@');
@@ -434,6 +449,14 @@ class WhatsAppBot {
               this.updateOwnIds();
             }
           } catch (e) {}
+        }
+        if (!isSelfChat) {
+          const contact = await this.resolveContactForSelf(message, chat);
+          if (contact && contact.self) {
+            isSelfChat = true;
+            this._selfChatId = contact.chatId;
+            this.updateOwnIds();
+          }
         }
       }
 

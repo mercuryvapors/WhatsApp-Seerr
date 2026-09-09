@@ -120,6 +120,35 @@ const run = (m) => bot.handleMessage(m);
   }));
   console.log('11 to===from:      ', bot.gotCmd === 'samejid' ? 'TRIGGERED' : 'not triggered');
 
+// 12) LID-bound self-chat (user's real case): to is an opaque @lid whose
+//     contact resolves back to our own number -> self
+  bot._seenMsgIds.clear();
+  bot.gotCmd = null;
+  bot.callbacks.onCommand = async () => { bot.gotCmd = 'lidself'; };
+  await run(makeMsg({
+    id: { id: 'LIDSELF', fromMe: true, _serialized: 'LIDSELF' },
+    from: '15551234567@c.us',
+    to: '49125936644107@lid',
+    getChat: async () => ({ id: { _serialized: '49125936644107@lid' }, getContact: async () => ({ isMe: false, number: '15551234567' }) })
+  }));
+  console.log('12 lid-bound self:  ', bot.gotCmd === 'lidself' ? 'TRIGGERED' : 'not triggered');
+  console.log('    learned selfChatId:', bot._selfChatId);
+
+  // 13) LID contact resolving to a DIFFERENT number must stay skipped
+  bot._seenMsgIds.clear();
+  triggered = false;
+  bot._selfChatId = null;
+  bot._ownIds.clear();
+  bot.updateOwnIds();
+  bot.callbacks.onCommand = async () => { triggered = true; };
+  await run(makeMsg({
+    id: { id: 'LIDOTHER', fromMe: true, _serialized: 'LIDOTHER' },
+    from: '15551234567@c.us',
+    to: '49125936644107@lid',
+    getChat: async () => ({ id: { _serialized: '49125936644107@lid' }, getContact: async () => ({ isMe: false, number: '14445550000' }) })
+  }));
+  console.log('13 lid other-num:  ', triggered ? 'WRONGLY TRIGGERED' : 'skipped');
+
   const fails = [];
   const all = debug.all();
   if (!(all.some((e) => e.reason === 'processing as self-test'))) fails.push('no processing-as-self-test log');
