@@ -115,6 +115,10 @@ async function handleRequest(args, reply) {
     mediaType = 'tv';
     title = args.replace(/^(tv|show|series)\b/i, '').trim();
   }
+  title = title.replace(/^["']+|["']+$/g, '').trim();
+  if (!title) {
+    return reply('Please provide a title. Example: !request Dune');
+  }
 
   try {
     await (mediaType === 'tv' ? seerr.requestTv(title) : seerr.requestMovie(title));

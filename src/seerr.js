@@ -46,6 +46,19 @@ function parseStatus(body) {
   return !!body.version;
 }
 
+/**
+ * RFC3986-compliant query-value encoding.
+ * URLSearchParams encodes spaces as '+', but Jellyseerr/Overseerr's
+ * OpenAPI validator rejects '+' (and other reserved chars) with
+ * "must be url encoded. Its value may not contain reserved characters."
+ */
+function encodeQueryValue(value) {
+  const s = String(value == null ? '' : value);
+  return encodeURIComponent(s).replace(/[!'()*]/g, (c) => {
+    return '%' + c.charCodeAt(0).toString(16).toUpperCase();
+  });
+}
+
 class SeerrApi {
   constructor(config) {
     this.config = config;
@@ -146,9 +159,9 @@ class SeerrApi {
   }
 
   async search(query, mediaType = 'all', configOverride) {
-    const params = new URLSearchParams({ query });
-    if (mediaType && mediaType !== 'all') params.set('mediaType', mediaType);
-    return this.fetchJson(`/api/v1/search?${params.toString()}`, {}, configOverride);
+    const parts = [`query=${encodeQueryValue(query)}`];
+    if (mediaType && mediaType !== 'all') parts.push(`mediaType=${mediaType}`);
+    return this.fetchJson(`/api/v1/search?${parts.join('&')}`, {}, configOverride);
   }
 
   async status(configOverride) {
