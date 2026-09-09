@@ -51,6 +51,10 @@ const DEFAULT_CONFIG = {
   seerr: {
     url: '',
     apiKey: '',
+    impersonate: {
+      email: '',
+      password: ''
+    },
     type: 'overseerr',
     enabled: false
   },

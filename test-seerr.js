@@ -3,11 +3,36 @@ const SeerrApi = require('./src/seerr');
 
 function startMock() {
   return new Promise((resolve) => {
+    const seen = { cookies: [], apiKeys: [], requests: [] };
     const server = http.createServer((req, res) => {
+      const cookie = req.headers.cookie || '';
+      const cookies = (cookie.match(/connect\.sid=([^;]+)/g) || []).map((c) => c);
+      const apiKey = (req.headers['x-api-key'] || '').toString();
+      if (cookies.length) seen.cookies.push(cookies);
+      if (apiKey) seen.apiKeys.push(apiKey);
+
+      if (req.url === '/api/v1/auth/local' && req.method === 'POST') {
+        let b = '';
+        req.on('data', (c) => (b += c));
+        req.on('end', () => {
+          const body = JSON.parse(b);
+          res.setHeader('Content-Type', 'application/json');
+          if (body.email === 'bob@home' && body.password === 'pw') {
+            res.setHeader('Set-Cookie', 'connect.sid=s%3Auser-bobby; Path=/; HttpOnly');
+            res.end(JSON.stringify({ id: 7, email: 'bob@home', username: 'bobby', plexUsername: 'bobby' }));
+          } else {
+            res.statusCode = 403;
+            res.end(JSON.stringify({ message: 'Access denied.' }));
+          }
+        });
+        return;
+      }
       if (req.url.startsWith('/api/v1/status')) {
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ version: '1.90.0', commitTag: 'abc', name: 'Overseerr' }));
-      } else if (req.url.startsWith('/api/v1/search')) {
+        return;
+      }
+      if (req.url.startsWith('/api/v1/search')) {
         const u = new URL(req.url, 'http://mock');
         if (u.searchParams.has('mediaType')) {
           res.statusCode = 400;
@@ -15,35 +40,41 @@ function startMock() {
           res.end(JSON.stringify({ message: "unknown query parameter 'mediaType'" }));
           return;
         }
-        const typeOnly = req.url.includes('type%3Amovie') ? 'movie' : null;
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ results: [{ id: 1, mediaType: typeOnly || 'movie', title: 'Dune' }] }));
-      } else if (req.url.startsWith('/api/v1/request') && req.method === 'POST') {
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ id: 99, requestedBy: 'x' }));
-      } else {
-        res.statusCode = 404;
-        res.end('nope');
+        res.end(JSON.stringify({ results: [{ id: 1, mediaType: 'movie', title: 'Dune' }] }));
+        return;
       }
+      if (req.url.startsWith('/api/v1/request') && req.method === 'POST') {
+        let b = '';
+        req.on('data', (c) => (b += c));
+        req.on('end', () => {
+          seen.requests.push({ body: JSON.parse(b), cookie: cookie, apiKey });
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ id: 99, requestedBy: 'x' }));
+        });
+        return;
+      }
+      res.statusCode = 404;
+      res.end('nope');
     });
-    server.listen(0, '127.0.0.1', () => resolve(server));
+    server.listen(0, '127.0.0.1', () => resolve({ server, seen }));
   });
 }
 
 (async () => {
-  const server = await startMock();
+  const { server, seen } = await startMock();
   const port = server.address().port;
   const cfg = {
     server: {},
     whatsapp: {},
-    seerr: { url: `http://127.0.0.1:${port}`, apiKey: 'secret', enabled: true },
+    seerr: { url: `http://127.0.0.1:${port}`, apiKey: 'secret', enabled: true, type: 'overseerr' },
     app: { name: 'test' }
   };
   const api = new SeerrApi(cfg);
 
-  console.log('--- test() ---');
+  console.log('--- test() with only API key ---');
   const result = await api.test();
-  console.log(JSON.stringify(result, null, 2));
+  console.log('ok:', result.ok, '| check:', result.checks[0].name, result.checks[0].detail);
   if (!result.ok) throw new Error('test() failed');
 
   console.log('--- no-scheme URL normalization ---');
@@ -53,11 +84,34 @@ function startMock() {
   console.log('normalized url:', t2.url);
   if (!t2.ok) throw new Error('normalization test failed');
 
-  console.log('--- requestMovie ---');
+  console.log('--- requestMovie via API key ---');
   const api3 = new SeerrApi(cfg);
   const req = await api3.requestMovie('Dune');
   console.log('request response id:', req.id);
   if (req.id !== 99) throw new Error('requestMovie failed');
+  if (seen.apiKeys.length === 0) throw new Error('expected api key header');
+  if (seen.cookies.length !== 0) throw new Error('did not expect cookie without impersonation');
+
+  console.log('--- impersonation: search + request use the user session ---');
+  const apiImp = new SeerrApi({
+    ...cfg,
+    seerr: {
+      ...cfg.seerr,
+      apiKey: '',
+      impersonate: { email: 'bob@home', password: 'pw' }
+    }
+  });
+  const t5 = await apiImp.test();
+  console.log('test ok:', t5.ok, '| impersonating:', t5.impersonating, '| check:', JSON.stringify(t5.checks.map(c => [c.name, c.ok, c.detail])));
+  if (!t5.ok) throw new Error('impersonation test() failed');
+  if (t5.impersonating !== 'bob@home') throw new Error('expected impersonating bob@home');
+
+  const reqImp = await apiImp.requestMovie('Dune');
+  console.log('request response id:', reqImp.id);
+  const reqRecord = seen.requests[seen.requests.length - 1];
+  console.log('request sent with cookie:', JSON.stringify(reqRecord.cookie), '| apiKey:', JSON.stringify(reqRecord.apiKey));
+  if (!/connect\.sid=/.test(reqRecord.cookie)) throw new Error('expected session cookie on request');
+  if (reqRecord.apiKey) throw new Error('did not expect api key on impersonated request');
 
   console.log('--- bad URL error messaging ---');
   const api4 = new SeerrApi({ ...cfg, seerr: { ...cfg.seerr, url: 'http://localhost:9' } });

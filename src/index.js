@@ -184,7 +184,14 @@ app.post('/api/config', (req, res) => {
       ...config,
       ...body,
       whatsapp: { ...config.whatsapp, ...(body.whatsapp || {}) },
-      seerr: { ...config.seerr, ...(body.seerr || {}) },
+      seerr: {
+        ...config.seerr,
+        ...(body.seerr || {}),
+        impersonate: {
+          ...(config.seerr.impersonate || {}),
+          ...((body.seerr && body.seerr.impersonate) || {})
+        }
+      },
       server: { ...config.server, ...(body.server || {}) },
       app: { ...config.app, ...(body.app || {}) }
     };
@@ -202,7 +209,9 @@ app.get('/api/status', (req, res) => {
     whatsapp: bot.getStatus(),
     seerr: {
       enabled: seerr.isEnabled(),
-      configured: seerr.isConfigured()
+      configured: seerr.isConfigured(),
+      impersonating: seerr._userEmail || false,
+      impersonateConfigured: seerr.hasImpersonation()
     }
   });
 });

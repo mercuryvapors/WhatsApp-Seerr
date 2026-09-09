@@ -62,7 +62,9 @@ function encodeQueryValue(value) {
 class SeerrApi {
   constructor(config) {
     this.config = config;
-    this._baseCache = new Map();
+    this._userToken = null;
+    this._userEmail = null;
+    this._userTried = false;
   }
 
   settings() {
@@ -71,7 +73,7 @@ class SeerrApi {
 
   isConfigured() {
     const s = this.settings();
-    return !!(s.url && s.apiKey);
+    return !!s.url && (!!(s.apiKey) || !!(s.impersonate && s.impersonate.email && s.impersonate.password));
   }
 
   isEnabled() {
@@ -79,8 +81,97 @@ class SeerrApi {
     return s.enabled && this.isConfigured();
   }
 
+  async ensureUserAuth(configOverride) {
+    const s = this.settings();
+    const imp = (configOverride && configOverride.impersonate) || s.impersonate || {};
+    if (!imp.email || !imp.password) return null;
+    if (this._userToken && this._userEmail === imp.email && !this._userTried) {
+      return this._userToken;
+    }
+    return this.login(imp.email, imp.password, configOverride);
+  }
+
+  async login(email, password, configOverride) {
+    const eff = this.effective(configOverride);
+    let base = this.baseUrl(eff);
+    if (!base) throw new Error('Seerr URL not configured');
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+    const record = {
+      dir: 'seerr-request',
+      method: 'POST',
+      path: '/api/v1/auth/local',
+      url: `${base}/api/v1/auth/local`,
+      requestBody: debug.truncate({ email, password: '***' }),
+      response: '',
+      status: null,
+      durationMs: 0,
+      error: null
+    };
+    try {
+      const startedAt = Date.now();
+      const res = await fetch(`${base}/api/v1/auth/local`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+        signal: controller.signal
+      });
+      record.durationMs = Date.now() - startedAt;
+      record.status = res.status;
+
+      const contentType = res.headers.get('content-type') || '';
+      const bodyText = contentType.includes('application/json') ? JSON.stringify(await res.json().catch(() => null)) : await res.text();
+      if (!res.ok) {
+        record.error = `Seerr login failed (${res.status}): ${debug.truncate(bodyText || res.statusText)}`;
+        debug.log(record);
+        this._userTried = true;
+        throw new Error(record.error);
+      }
+
+      const cookie = res.headers.get('set-cookie') || '';
+      const apiResponse = contentType.includes('application/json') ? await res.json().catch(() => null) : null;
+
+      let token = '';
+      if (cookie && /connect\.sid=/i.test(cookie)) {
+        const m = cookie.match(/connect\.sid=([^;]+)/i);
+        if (m) token = m[1];
+      }
+      if (!token && apiResponse && apiResponse.token) token = apiResponse.token;
+      if (!token && apiResponse && apiResponse.apiKey) token = apiResponse.apiKey;
+
+      const userEmail = (apiResponse && (apiResponse.email || apiResponse.username)) || email;
+      if (!token) {
+        record.error = 'Seerr login succeeded but no session token was returned. Enable API-key or session login on the Seerr side, or use the API Key field instead of impersonation.';
+        debug.log(record);
+        throw new Error(record.error);
+      }
+
+      record.response = debug.truncate({
+        user: userEmail,
+        id: apiResponse && apiResponse.id,
+        hasToken: true
+      });
+      debug.log(record);
+      this._userToken = token;
+      this._userEmail = userEmail;
+      this._userTried = false;
+      return token;
+    } catch (e) {
+      if (!(e instanceof Error && e.message && e.message.startsWith('Seerr login failed'))) {
+        const described = describeError(e);
+        record.error = described;
+        debug.log(record);
+        throw new Error(described);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   effective(params) {
-    if (params && (params.url || params.apiKey)) {
+    if (params && (params.url || params.apiKey || (params.impersonate && params.impersonate.email))) {
       return { ...this.settings(), ...params };
     }
     return this.settings();
@@ -91,70 +182,97 @@ class SeerrApi {
     return normalizeBase(eff.url);
   }
 
+  hasImpersonation(configOverride) {
+    const eff = this.effective(configOverride);
+    const imp = eff.impersonate || {};
+    return !!(imp.email && imp.password);
+  }
+
   async fetchJson(path, options = {}, configOverride) {
     const eff = this.effective(configOverride);
     let base = this.baseUrl(eff);
     if (!base) throw new Error('Seerr URL not configured');
 
-    const cacheKey = `${eff.url}|${eff.apiKey}`;
+    const usingImpersonation = this.hasImpersonation(eff);
     const url = `${base}${path}`;
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
-
-    const record = {
-      dir: 'seerr-request',
-      method: (options.method || 'GET').toUpperCase(),
-      path,
-      url,
-      requestBody: debug.truncate(options.body),
-      response: '',
-      status: null,
-      durationMs: 0,
-      error: null
-    };
-
-    try {
-      const startedAt = Date.now();
-      const res = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-        headers: {
-          'X-Api-Key': eff.apiKey || '',
-          'Content-Type': 'application/json',
-          ...(options.headers || {})
-        }
-      });
-
-      record.status = res.status;
-      record.durationMs = Date.now() - startedAt;
-
-      const contentType = res.headers.get('content-type') || '';
-      const body = contentType.includes('application/json')
-        ? await res.json()
-        : await res.text();
-
-      record.response = debug.truncate(body);
-
-      if (!res.ok) {
-        throw new Error(`Seerr API error ${res.status}: ${debug.truncate(body)}`);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let token = '';
+      if (usingImpersonation) {
+        token = await this.ensureUserAuth(eff);
       }
-      this._baseCache.set(cacheKey, base);
-      return body;
-    } catch (e) {
-      if (e instanceof Error && e.message.startsWith('Seerr API error')) {
-        record.error = e.message;
-      } else {
-        const described = describeError(e);
-        record.error = described;
-        if (!(e instanceof Error) || e.message !== described) {
-          e = new Error(described);
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+
+      const record = {
+        dir: 'seerr-request',
+        method: (options.method || 'GET').toUpperCase(),
+        path,
+        url,
+        requestBody: debug.truncate(options.body),
+        response: '',
+        status: null,
+        durationMs: 0,
+        error: null,
+        as: usingImpersonation ? this._userEmail || 'impersonated' : 'api-key'
+      };
+
+      try {
+        const startedAt = Date.now();
+        const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+        if (usingImpersonation) {
+          headers['Cookie'] = `connect.sid=${token}`;
+        } else {
+          headers['X-Api-Key'] = eff.apiKey || '';
         }
+
+        const res = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+          headers
+        });
+
+        record.status = res.status;
+        record.durationMs = Date.now() - startedAt;
+
+        const contentType = res.headers.get('content-type') || '';
+        const body = contentType.includes('application/json')
+          ? await res.json()
+          : await res.text();
+
+        record.response = debug.truncate(body);
+
+        if (!res.ok) {
+          if (
+            usingImpersonation &&
+            (res.status === 401 || res.status === 403) &&
+            attempt === 0
+          ) {
+            this._userToken = null;
+            this._userTried = false;
+            record.error = `Retrying as user (session ${res.status}: ${debug.truncate(body)})`;
+            debug.log(record);
+            continue;
+          }
+          throw new Error(`Seerr API error ${res.status}: ${debug.truncate(body)}`);
+        }
+        return body;
+      } catch (e) {
+        if (e instanceof Error && e.message.startsWith('Seerr API error')) {
+          record.error = e.message;
+        } else {
+          const described = describeError(e);
+          record.error = described;
+          if (!(e instanceof Error) || e.message !== described) {
+            e = new Error(described);
+          }
+        }
+        throw e;
+      } finally {
+        clearTimeout(timer);
+        debug.log(record);
       }
-      throw e;
-    } finally {
-      clearTimeout(timer);
-      debug.log(record);
     }
   }
 
@@ -248,14 +366,18 @@ class SeerrApi {
       try {
         const results = await this.search('test', 'all', { ...eff, url: base });
         authOk = true;
-        authDetail = `API key accepted — search returned ${(results.results || []).length} result(s)`;
+        authDetail = this._userEmail
+          ? `Authenticated as ${this._userEmail} — search returned ${(results.results || []).length} result(s)`
+          : `API key accepted — search returned ${(results.results || []).length} result(s)`;
       } catch (e) {
         authDetail = e.message;
         if (/401|403/.test(e.message)) {
-          authDetail = 'API key rejected (401/403). Double-check the key in Seerr → Settings → General.';
+          authDetail = this.hasImpersonation(eff)
+            ? 'Impersonation login or session rejected (401/403). Check the email/password and that the user may access Seerr.'
+            : 'API key rejected (401/403). Double-check the key in Seerr → Settings → General.';
         }
       }
-      setResult('API key valid', authOk, authDetail);
+      setResult(this.hasImpersonation(eff) ? 'User login valid' : 'API key valid', authOk, authDetail);
     }
 
     const ok = statusOk && authOk;
@@ -263,6 +385,7 @@ class SeerrApi {
       ok,
       url: base,
       apiKey: eff.apiKey ? 'set' : 'missing',
+      impersonating: this._userEmail || (this.hasImpersonation(eff) ? 'pending' : false),
       enabled: !!eff.enabled,
       checks
     };

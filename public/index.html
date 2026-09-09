@@ -407,6 +407,13 @@
         <input type="text" id="srKey" placeholder="API key from Seerr settings">
         <div class="hint">Find in Overseerr/Jellyseerr → Settings → General → API Key.</div>
 
+        <div class="section-divider"></div>
+        <label>Impersonate as user <span class="opt">(optional)</span></label>
+        <input type="text" id="srImpersonateEmail" placeholder="user@example.com" autocomplete="off">
+        <div class="hint">Make requests as this Seerr user instead of the admin API key (e.g. a non-admin account). Leave blank to use the API key.</div>
+        <input type="password" id="srImpersonatePassword" placeholder="Account password" autocomplete="new-password">
+        <div class="hint">Stored in <code>config.json</code> on your server.</div>
+
         <button class="btn secondary" style="width:100%; margin-top:16px;" id="seerrTestBtn" onclick="testSeerr()">🔌 Test Seerr Connection</button>
         <div id="seerrTestResult" style="display:none; margin-top:14px;">
           <div id="seerrTestList"></div>
@@ -491,6 +498,8 @@
         document.getElementById('srEnabled').checked = !!config.seerr.enabled;
         document.getElementById('srUrl').value = config.seerr.url || '';
         document.getElementById('srKey').value = config.seerr.apiKey || '';
+        document.getElementById('srImpersonateEmail').value = (config.seerr.impersonate && config.seerr.impersonate.email) || '';
+        document.getElementById('srImpersonatePassword').value = (config.seerr.impersonate && config.seerr.impersonate.password) || '';
         document.getElementById('appName').value = config.app.name || '';
         document.getElementById('serverPort').value = config.server.port || 7000;
         renderNumbers(config.whatsapp.allowedNumbers || []);
@@ -542,7 +551,11 @@
         seerr: {
           enabled: document.getElementById('srEnabled').checked,
           url: document.getElementById('srUrl').value.trim(),
-          apiKey: document.getElementById('srKey').value.trim()
+          apiKey: document.getElementById('srKey').value.trim(),
+          impersonate: {
+            email: document.getElementById('srImpersonateEmail').value.trim(),
+            password: document.getElementById('srImpersonatePassword').value
+          }
         },
         app: {
           name: document.getElementById('appName').value || 'WhatsApp Seerr Bridge'
@@ -601,7 +614,11 @@
         seerr: {
           enabled: document.getElementById('srEnabled').checked,
           url: document.getElementById('srUrl').value.trim(),
-          apiKey: document.getElementById('srKey').value.trim()
+          apiKey: document.getElementById('srKey').value.trim(),
+          impersonate: {
+            email: document.getElementById('srImpersonateEmail').value.trim(),
+            password: document.getElementById('srImpersonatePassword').value
+          }
         },
         app: { name: document.getElementById('appName').value || 'WhatsApp Seerr Bridge' },
         server: { port: parseInt(document.getElementById('serverPort').value) || 7000 }
@@ -685,7 +702,9 @@
         else if (wa.status === 'disconnected' || wa.status === 'auth_failure' || wa.status === 'error') waDot.classList.add('offline');
 
         document.getElementById('seerrDot').className = 'dot' + (se.enabled ? ' online' : ' offline');
-        document.getElementById('seerrStatusText').textContent = se.enabled ? 'Seerr: online' : 'Seerr: off';
+        document.getElementById('seerrStatusText').textContent = se.enabled
+          ? 'Seerr: online' + (se.impersonating ? ' as ' + se.impersonating : '')
+          : 'Seerr: off';
       } catch (e) { }
     }
 
@@ -700,7 +719,11 @@
         const payload = {
           url: document.getElementById('srUrl').value.trim(),
           apiKey: document.getElementById('srKey').value.trim(),
-          enabled: document.getElementById('srEnabled').checked
+          enabled: document.getElementById('srEnabled').checked,
+          impersonate: {
+            email: document.getElementById('srImpersonateEmail').value.trim(),
+            password: document.getElementById('srImpersonatePassword').value
+          }
         };
         const r = await fetchJSON('/api/test/seerr', {
           method: 'POST',
