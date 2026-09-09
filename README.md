@@ -14,12 +14,18 @@ Bridge WhatsApp to Seerr (Overseerr / Jellyseerr) so users can request movies an
 
 | Command | Action |
 |---------|--------|
-| `!request <title>` | Requests media (auto-detects movie vs TV) |
-| `!request movie <title>` | Requests a movie |
-| `!request tv <title>` | Requests a TV show |
+| `!request movie <title>` | Searches movies and lists the top 5 matches |
+| `!request tv <title>` | Searches TV shows and lists the top 5 matches |
+| `!pick <n>` | Requests match `n` from the search list (within 5 minutes) |
 | `!help` | Shows available commands |
 
-Example: `!request Dune` → searches Seerr and submits the request.
+Example:
+```
+!request movie Dune
+!request tv Severance
+!pick 1
+```
+A media type (`movie` or `tv`) is required — the bot lists the top 5 matches and you confirm the right one with `!pick 1-5`.
 
 ## Setup
 
@@ -73,9 +79,9 @@ docker run -d \
 Send a message to the linked WhatsApp number:
 
 ```
-!request Dune
+!request movie Dune
 !request tv Severance
-!request movie Inception
+!pick 3
 ```
 
 ## Unraid

@@ -8,6 +8,9 @@ const debug = require('./debug');
 const app = express();
 app.use(express.json());
 
+const PICK_WINDOW_MS = 5 * 60 * 1000;
+const pendingRequests = new Map(); // number -> { type, title, results, expiresAt }
+
 let config = loadConfig();
 const bot = new WhatsAppBot(config, {
   onCommand: handleCommand,
@@ -55,18 +58,116 @@ function handleCommand({ cmd, args, reply, number }) {
       return run(() => reply(
         `*${config.app.name || 'WhatsApp Seerr Bridge'}*\n\n` +
           `Available commands:\n` +
-          `${prefix}request <title> - Request media (movie)\n` +
-          `${prefix}request tv <title> - Request a TV show\n` +
-          `${prefix}request movie <title> - Request a movie\n` +
+          `${prefix}request movie <title> - Search movies, pick one to request\n` +
+          `${prefix}request tv <title> - Search TV shows, pick one to request\n` +
+          `${prefix}pick <number> - Confirm a match from the search results\n` +
           `${prefix}test - Run a connection diagnostic\n` +
           `${prefix}help - Show this message`
       ), 'help');
     case 'request':
-      return run(() => handleRequest(args, reply), 'request');
+      return run(() => handleRequest(args, reply, number), 'request');
+    case 'pick':
+      return run(() => handlePick(number, args, reply), 'pick');
     case 'test':
       return run(() => handleChatTest(reply), 'test');
     default:
       return run(() => reply(`Unknown command. Type ${prefix}help for available commands.`), 'default');
+  }
+}
+
+function cleanupPending() {
+  const now = Date.now();
+  for (const [key, entry] of pendingRequests) {
+    if (now > entry.expiresAt) pendingRequests.delete(key);
+  }
+}
+
+function mediaIcon(type) {
+  return type === 'movie' ? '🎬' : '📺';
+}
+
+function resultTitle(r) {
+  return r.title || r.originalTitle || r.name || r.originalName || '';
+}
+
+function resultYear(r) {
+  const date = r.releaseDate || r.firstAirDate || r.airDate || '';
+  return date ? `(${String(date).slice(0, 4)})` : '';
+}
+
+async function handleRequest(args, reply, number) {
+  if (!seerr.isEnabled()) {
+    return reply('Seerr is not configured or disabled. Please check the web UI.');
+  }
+  if (!args) {
+    return reply('Please specify a media type and title. Example: *!request movie Dune*');
+  }
+
+  const lower = args.toLowerCase();
+  let mediaType = null;
+  if (lower.startsWith('movie')) {
+    mediaType = 'movie';
+  } else if (lower.startsWith('tv') || lower.startsWith('show') || lower.startsWith('series')) {
+    mediaType = 'tv';
+  }
+  if (!mediaType) {
+    return reply('Please start with *movie* or *tv*. Example: *!request movie Dune*');
+  }
+
+  let title = args.replace(/^(movie|tv|show|series)\b/i, '').trim();
+  title = title.replace(/^["']+|["']+$/g, '').trim();
+  if (!title) {
+    return reply('Please provide a title. Example: *!request movie Dune*');
+  }
+
+  try {
+    const data = await seerr.search(title, 'all');
+    const items = (data && Array.isArray(data.results) ? data.results : [])
+      .filter((r) => r && r.mediaType === mediaType)
+      .slice(0, 5);
+
+    if (items.length === 0) {
+      return reply(`No ${mediaType === 'movie' ? 'movies' : 'TV shows'} found for "*${title}*". Double-check the spelling.`);
+    }
+
+    cleanupPending();
+    pendingRequests.set(number, { type: mediaType, title, results: items, expiresAt: Date.now() + PICK_WINDOW_MS });
+
+    const lines = [
+      `Top ${items.length} ${mediaType === 'movie' ? 'movie' : 'TV'} match${items.length > 1 ? 'es' : ''} for "*${title}*":`,
+      ''
+    ];
+    items.forEach((r, i) => {
+      lines.push(`${i + 1}. ${mediaIcon(r.mediaType)} ${resultTitle(r)} ${resultYear(r)}`.trim());
+    });
+    lines.push('', `Reply *!pick 1-${items.length}* to request one.`);
+    return reply(lines.join('\n'));
+  } catch (e) {
+    return reply(`❌ Search failed: ${e.message}`);
+  }
+}
+
+async function handlePick(number, args, reply) {
+  cleanupPending();
+  const entry = pendingRequests.get(number);
+  if (!entry) {
+    return reply('No pending search. Start with *!request movie <title>* or *!request tv <title>* first.');
+  }
+  const idx = parseInt(String(args || '').trim(), 10);
+  if (!Number.isInteger(idx) || idx < 1 || idx > entry.results.length) {
+    return reply(`Please pick a number between 1 and ${entry.results.length}.`);
+  }
+
+  const item = entry.results[idx - 1];
+  const name = resultTitle(item);
+  const year = resultYear(item);
+  pendingRequests.delete(number);
+
+  try {
+    await seerr.submitRequest({ mediaType: item.mediaType, mediaId: item.id });
+    return reply(`✅ Requested *${name}* ${year} successfully!`.trim());
+  } catch (e) {
+    return reply(`❌ Failed to request "${name}": ${e.message}`);
   }
 }
 
@@ -97,38 +198,7 @@ async function handleChatTest(reply) {
   return reply(lines.join('\n'));
 }
 
-async function handleRequest(args, reply) {
-  if (!seerr.isEnabled()) {
-    return reply('Seerr is not configured or disabled. Please check the web UI.');
-  }
-  if (!args) {
-    return reply('Please provide a title. Example: !request Dune');
-  }
-
-  const lower = args.toLowerCase();
-  let mediaType = null;
-  let title = args;
-  if (lower.startsWith('movie')) {
-    mediaType = 'movie';
-    title = args.replace(/^movie\b/i, '').trim();
-  } else if (lower.startsWith('tv') || lower.startsWith('show') || lower.startsWith('series')) {
-    mediaType = 'tv';
-    title = args.replace(/^(tv|show|series)\b/i, '').trim();
-  }
-  title = title.replace(/^["']+|["']+$/g, '').trim();
-  if (!title) {
-    return reply('Please provide a title. Example: !request Dune');
-  }
-
-  try {
-    await (mediaType === 'tv' ? seerr.requestTv(title) : seerr.requestMovie(title));
-    return reply(`✅ Requested "*${title}*" successfully!`);
-  } catch (e) {
-    return reply(`❌ Failed to request "${title}": ${e.message}`);
-  }
-}
-
-function applyConfig(newConfig) {
+async function applyConfig(newConfig) {
   config = newConfig;
   try {
     saveConfig(config);
