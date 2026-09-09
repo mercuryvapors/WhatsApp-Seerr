@@ -8,8 +8,16 @@ function startMock() {
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ version: '1.90.0', commitTag: 'abc', name: 'Overseerr' }));
       } else if (req.url.startsWith('/api/v1/search')) {
+        const u = new URL(req.url, 'http://mock');
+        if (u.searchParams.has('mediaType')) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ message: "unknown query parameter 'mediaType'" }));
+          return;
+        }
+        const typeOnly = req.url.includes('type%3Amovie') ? 'movie' : null;
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ results: [{ id: 1, mediaType: 'movie', title: 'Dune' }] }));
+        res.end(JSON.stringify({ results: [{ id: 1, mediaType: typeOnly || 'movie', title: 'Dune' }] }));
       } else if (req.url.startsWith('/api/v1/request') && req.method === 'POST') {
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ id: 99, requestedBy: 'x' }));

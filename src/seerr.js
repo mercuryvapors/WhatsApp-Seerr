@@ -160,7 +160,6 @@ class SeerrApi {
 
   async search(query, mediaType = 'all', configOverride) {
     const parts = [`query=${encodeQueryValue(query)}`];
-    if (mediaType && mediaType !== 'all') parts.push(`mediaType=${mediaType}`);
     return this.fetchJson(`/api/v1/search?${parts.join('&')}`, {}, configOverride);
   }
 
@@ -170,10 +169,15 @@ class SeerrApi {
 
   async requestByTitle(title, mediaType, configOverride) {
     const results = await this.search(title, mediaType, configOverride);
-    if (!results || !Array.isArray(results.results) || results.results.length === 0) {
+    const items = results && Array.isArray(results.results) ? results.results : [];
+    if (items.length === 0) {
       throw new Error(`No results found for "${title}"`);
     }
-    return results.results[0];
+    if (mediaType && mediaType !== 'all') {
+      const match = items.find((r) => r.mediaType === mediaType) || items.find((r) => !r.mediaType);
+      if (match) return match;
+    }
+    return items[0];
   }
 
   async requestMovie(title, configOverride) {
