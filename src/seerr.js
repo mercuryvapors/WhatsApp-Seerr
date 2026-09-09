@@ -305,7 +305,11 @@ class SeerrApi {
 
   async requestTv(title, configOverride) {
     const media = await this.requestByTitle(title, 'tv', configOverride);
-    return this.submitRequest({ mediaType: 'tv', mediaId: media.id }, configOverride);
+    return this.submitRequest({
+      mediaType: 'tv',
+      mediaId: media.tmdbId || media.id,
+      tvdbId: media.id
+    }, configOverride);
   }
 
   async submitRequest(payload, configOverride) {

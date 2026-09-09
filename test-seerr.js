@@ -41,7 +41,10 @@ function startMock() {
           return;
         }
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ results: [{ id: 1, mediaType: 'movie', title: 'Dune' }] }));
+        res.end(JSON.stringify({ results: [
+          { id: 1, mediaType: 'movie', title: 'Dune', tmdbId: 1 },
+          { id: 312, mediaType: 'tv', name: 'Goliath', tmdbId: 7 }
+        ] }));
         return;
       }
       if (req.url.startsWith('/api/v1/request') && req.method === 'POST') {
@@ -113,7 +116,7 @@ function startMock() {
   if (!/connect\.sid=/.test(reqRecord.cookie)) throw new Error('expected session cookie on request');
   if (reqRecord.apiKey) throw new Error('did not expect api key on impersonated request');
 
-  console.log('--- tv request includes seasons:\'all\' ---');
+  console.log('--- tv request includes seasons:\'all\' + tmdb mediaId ---');
   const apiTv = new SeerrApi({ ...cfg, seerr: { ...cfg.seerr, apiKey: 'secret' } });
   // requestTv picks the tv match from search then submits
   await apiTv.requestTv('Goliath');
@@ -121,6 +124,8 @@ function startMock() {
   console.log('tv request body:', JSON.stringify(tvReq.body));
   if (tvReq.body.mediaType !== 'tv') throw new Error('expected tv mediaType');
   if (tvReq.body.seasons !== 'all') throw new Error('tv request must include seasons=\'all\' (Seerr 500s without it)');
+  if (tvReq.body.mediaId !== 7) throw new Error('tv request must use the TMDB id as mediaId (search returns tvdb id as id; Seerr treats mediaId as tmdbId for tv)');
+  if (tvReq.body.tvdbId !== 312) throw new Error('expected tvdbId to be sent explicitly');
 
   console.log('--- direct submitRequest defaults seasons for tv ---');
   const apiSub = new SeerrApi(cfg);

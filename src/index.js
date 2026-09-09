@@ -164,7 +164,11 @@ async function handlePick(number, args, reply) {
   pendingRequests.delete(number);
 
   try {
-    await seerr.submitRequest({ mediaType: item.mediaType, mediaId: item.id });
+    const isTv = item.mediaType === 'tv';
+    const payload = isTv
+      ? { mediaType: 'tv', mediaId: item.tmdbId || item.id, tvdbId: item.id }
+      : { mediaType: 'movie', mediaId: item.id };
+    await seerr.submitRequest(payload);
     return reply(`✅ Requested *${name}* ${year} successfully!`.trim());
   } catch (e) {
     return reply(`❌ Failed to request "${name}": ${e.message}`);
