@@ -309,9 +309,13 @@ class SeerrApi {
   }
 
   async submitRequest(payload, configOverride) {
+    const body = Object.assign({}, payload);
+    if (body.mediaType === 'tv' && body.seasons === undefined) {
+      body.seasons = 'all';
+    }
     return this.fetchJson('/api/v1/request', {
       method: 'POST',
-      body: JSON.stringify(payload)
+      body: JSON.stringify(body)
     }, configOverride);
   }
 

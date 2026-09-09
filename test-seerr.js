@@ -113,6 +113,21 @@ function startMock() {
   if (!/connect\.sid=/.test(reqRecord.cookie)) throw new Error('expected session cookie on request');
   if (reqRecord.apiKey) throw new Error('did not expect api key on impersonated request');
 
+  console.log('--- tv request includes seasons:\'all\' ---');
+  const apiTv = new SeerrApi({ ...cfg, seerr: { ...cfg.seerr, apiKey: 'secret' } });
+  // requestTv picks the tv match from search then submits
+  await apiTv.requestTv('Goliath');
+  const tvReq = seen.requests[seen.requests.length - 1];
+  console.log('tv request body:', JSON.stringify(tvReq.body));
+  if (tvReq.body.mediaType !== 'tv') throw new Error('expected tv mediaType');
+  if (tvReq.body.seasons !== 'all') throw new Error('tv request must include seasons=\'all\' (Seerr 500s without it)');
+
+  console.log('--- direct submitRequest defaults seasons for tv ---');
+  const apiSub = new SeerrApi(cfg);
+  await apiSub.submitRequest({ mediaType: 'tv', mediaId: 77 });
+  const subReq = seen.requests[seen.requests.length - 1];
+  if (subReq.body.seasons !== 'all') throw new Error('submitRequest should default tv seasons to all');
+
   console.log('--- bad URL error messaging ---');
   const api4 = new SeerrApi({ ...cfg, seerr: { ...cfg.seerr, url: 'http://localhost:9' } });
   const t4 = await api4.test({ url: 'http://localhost:9', apiKey: 'k', enabled: true });
