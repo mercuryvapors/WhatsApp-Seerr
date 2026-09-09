@@ -23,3 +23,8 @@ services:
       - DATA_DIR=/data
       - PUPPETEER_SKIP_DOWNLOAD=false
       - PORT=7000
+      # Optional: force every request through a dedicated Seerr user
+      # (overrides the "Impersonate as user" fields in the web UI).
+      # Uncomment and set on your Unraid box; do not commit real passwords:
+      # - SEERR_IMPERSONATE_EMAIL=request
+      # - SEERR_IMPERSONATE_PASSWORD=your-password

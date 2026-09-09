@@ -113,8 +113,10 @@ to `/mnt/user/appdata/whatsapp-seerr`, and in Advanced view add
 All settings are stored in `/data/config.json` at runtime and editable from the web UI:
 
 - **WhatsApp**: enable/disable, command prefix, allowed phone numbers
-- **Seerr**: URL, API key, enabled toggle
+- **Seerr**: URL, API key, enabled toggle, and optional "Impersonate as user" (email + password)
 - **General**: app name, web UI port
+
+To make every request as a dedicated Seerr user (instead of the admin API key), either fill in the "Impersonate as user" fields in the web UI, or set the two environment variables below — they override the web UI at startup.
 
 ## Environment Variables
 
@@ -123,6 +125,8 @@ All settings are stored in `/data/config.json` at runtime and editable from the 
 | `DATA_DIR` | `/data` | Where config/session data is stored  |
 | `PORT` | `7000` | HTTP port (env overrides config)     |
 | `CHROME_PATH` | unset | Optional: path to a custom Chrome binary; Puppeteer's own Chrome is used by default |
+| `SEERR_IMPERSONATE_EMAIL` | unset | Seerr login to impersonate (e.g. `request`) — overrides web UI at startup |
+| `SEERR_IMPERSONATE_PASSWORD` | unset | Password for the impersonated Seerr user — never commit this to a repo |
 
 ## Notes
 

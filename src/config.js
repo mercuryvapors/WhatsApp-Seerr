@@ -77,19 +77,31 @@ function defaultConfig() {
 
 function loadConfig() {
   ensureDataDir();
+  let cfg;
   if (!fs.existsSync(CONFIG_FILE)) {
-    const cfg = defaultConfig();
+    cfg = defaultConfig();
     saveConfig(cfg);
-    return cfg;
+  } else {
+    try {
+      const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      cfg = deepMerge(defaultConfig(), parsed);
+    } catch (e) {
+      console.error('Failed to parse config, using defaults:', e.message);
+      cfg = defaultConfig();
+    }
   }
-  try {
-    const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    const merged = deepMerge(defaultConfig(), parsed);
-    return merged;
-  } catch (e) {
-    console.error('Failed to parse config, using defaults:', e.message);
-    return defaultConfig();
+  applyEnvOverrides(cfg);
+  return cfg;
+}
+
+function applyEnvOverrides(cfg) {
+  const email = String(process.env.SEERR_IMPERSONATE_EMAIL || '').trim();
+  const password = String(process.env.SEERR_IMPERSONATE_PASSWORD || '');
+  if (email) cfg.seerr.impersonate.email = email;
+  if (password) cfg.seerr.impersonate.password = password;
+  if (email || password) {
+    console.log(`[config] Seerr impersonation overridden by environment (email: ${email || 'unset'})`);
   }
 }
 
