@@ -74,6 +74,18 @@ docker run -d \
 4. Scan the QR code with your phone (WhatsApp → Linked Devices → Link a Device). This creates a persistent session so you don't rescan each restart.
 5. Click **Save & Apply**.
 
+#### Optional: per-user Seerr accounts
+
+By default, requests are made with the API key (as the Seerr admin) or as the
+**Impersonate as user** account. To attribute requests to their own Seerr
+users instead, add **Per-user Seerr accounts**: map an allowed WhatsApp number
+to that user's Seerr email/password. The bot logs in as that user and uses
+their session cookie, so each person's permissions (e.g. `REQUEST_TV`) and
+quotas apply. Numbers with no mapping fall back to Impersonate or the API key.
+
+> Credentials (Impersonate + per-user) are stored in `config.json` on your
+> server — keep that file private; it is not committed to the repo.
+
 ### Step 3 — Request media
 
 Send a message to the linked WhatsApp number:

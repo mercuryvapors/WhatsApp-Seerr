@@ -121,7 +121,7 @@ async function handleRequest(args, reply, number) {
   }
 
   try {
-    const data = await seerr.search(title, 'all');
+    const data = await seerr.search(title, 'all', undefined, number);
     const items = (data && Array.isArray(data.results) ? data.results : [])
       .filter((r) => r && r.mediaType === mediaType)
       .slice(0, 5);
@@ -168,7 +168,7 @@ async function handlePick(number, args, reply) {
     const payload = isTv
       ? { mediaType: 'tv', mediaId: item.tmdbId || item.id, tvdbId: item.id }
       : { mediaType: 'movie', mediaId: item.id };
-    await seerr.submitRequest(payload);
+    await seerr.submitRequest(payload, undefined, number);
     return reply(`✅ Requested *${name}* ${year} successfully!`.trim());
   } catch (e) {
     return reply(`❌ Failed to request "${name}": ${e.message}`);
@@ -254,6 +254,15 @@ app.post('/api/config', (req, res) => {
         .map((s) => parseInt(s, 10))
         .filter((n) => !isNaN(n));
     }
+    if (body.seerr && Array.isArray(body.seerr.users)) {
+      body.seerr.users = body.seerr.users
+        .filter((u) => u && u.email)
+        .map((u) => ({
+          number: String(u.number || '').replace(/\D/g, ''),
+          email: String(u.email || '').trim(),
+          password: u.password || ''
+        }));
+    }
     const merged = {
       ...config,
       ...body,
@@ -285,7 +294,10 @@ app.get('/api/status', (req, res) => {
       enabled: seerr.isEnabled(),
       configured: seerr.isConfigured(),
       impersonating: seerr._userEmail || false,
-      impersonateConfigured: seerr.hasImpersonation()
+      impersonateConfigured: seerr.hasImpersonation(),
+      userAccounts: Array.isArray((config.seerr || {}).users)
+        ? config.seerr.users.filter((u) => u && u.email).map((u) => u.number)
+        : []
     }
   });
 });

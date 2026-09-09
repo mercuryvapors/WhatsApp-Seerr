@@ -243,6 +243,18 @@
     .tag-input-row { display: flex; gap: 8px; }
     .tag-input-row input { flex: 1; }
     .tag-input-row .btn { padding: 10px 14px; }
+    .tag-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      font-size: 13px;
+      word-break: break-word;
+    }
     .status-field {
       display: flex;
       align-items: center;
@@ -417,6 +429,18 @@
         <input type="password" id="srImpersonatePassword" placeholder="Account password" autocomplete="new-password">
         <div class="hint">Stored in <code>config.json</code> on your server.</div>
 
+        <div class="section-divider"></div>
+        <label>Per-user Seerr accounts <span class="opt">(optional)</span></label>
+        <div class="hint">Map a WhatsApp number to a Seerr login; the bot uses that user's session cookie (attribution, permissions, quotas). Leave blank to fall back to Impersonate or API key.</div>
+        <div id="seerrUsers"></div>
+        <div class="tag-input-row">
+          <input type="text" id="newUserNumber" placeholder="WhatsApp number, e.g. 15551234567" style="flex:1">
+          <input type="text" id="newUserEmail" placeholder="Seerr email" style="flex:1">
+          <input type="password" id="newUserPassword" placeholder="Password" autocomplete="new-password" style="flex:1">
+          <button class="btn secondary" onclick="addUserRow()">Add</button>
+        </div>
+        <div class="hint" id="seerrUsersHint">Credentials are stored in <code>config.json</code> on your server — keep it private.</div>
+
         <button class="btn secondary" style="width:100%; margin-top:16px;" id="seerrTestBtn" onclick="testSeerr()">🔌 Test Seerr Connection</button>
         <div id="seerrTestResult" style="display:none; margin-top:14px;">
           <div id="seerrTestList"></div>
@@ -503,6 +527,7 @@
         document.getElementById('srKey').value = config.seerr.apiKey || '';
         document.getElementById('srImpersonateEmail').value = (config.seerr.impersonate && config.seerr.impersonate.email) || '';
         document.getElementById('srImpersonatePassword').value = (config.seerr.impersonate && config.seerr.impersonate.password) || '';
+        renderSeerrUsers((config.seerr.users) || []);
         document.getElementById('appName').value = config.app.name || '';
         document.getElementById('serverPort').value = config.server.port || 7000;
         renderNumbers(config.whatsapp.allowedNumbers || []);
@@ -543,6 +568,50 @@
       renderNumbers(config.whatsapp.allowedNumbers);
     }
 
+    function renderSeerrUsers(users) {
+      const container = document.getElementById('seerrUsers');
+      container.innerHTML = '';
+      if (!users || users.length === 0) {
+        container.innerHTML = '<div class="hint">No per-user accounts — requests use Impersonate or API key.</div>';
+        return;
+      }
+      users.forEach((u, i) => {
+        const row = document.createElement('div');
+        row.className = 'tag-row';
+        row.innerHTML =
+          `<code>${u.number}</code> &nbsp;→&nbsp; <span>${escHtml(u.email)}</span>` +
+          `<span class="remove" onclick="removeUserRow(${i})">×</span>`;
+        container.appendChild(row);
+      });
+    }
+
+    function addUserRow() {
+      const number = document.getElementById('newUserNumber').value.trim().replace(/\D/g, '');
+      const email = document.getElementById('newUserEmail').value.trim();
+      const password = document.getElementById('newUserPassword').value;
+      if (!number || !email || !password) {
+        toast('Fill in number, email and password', 'error');
+        return;
+      }
+      const users = config.seerr.users || [];
+      const existing = users.findIndex((u) => String(u.number || '').replace(/\D/g, '') === number);
+      if (existing >= 0) {
+        users[existing] = { number, email, password };
+      } else {
+        users.push({ number, email, password });
+      }
+      config.seerr.users = users;
+      document.getElementById('newUserNumber').value = '';
+      document.getElementById('newUserEmail').value = '';
+      document.getElementById('newUserPassword').value = '';
+      renderSeerrUsers(users);
+    }
+
+    function removeUserRow(i) {
+      config.seerr.users.splice(i, 1);
+      renderSeerrUsers(config.seerr.users);
+    }
+
     async function saveConfig() {
       const payload = {
         whatsapp: {
@@ -558,7 +627,8 @@
           impersonate: {
             email: document.getElementById('srImpersonateEmail').value.trim(),
             password: document.getElementById('srImpersonatePassword').value
-          }
+          },
+          users: (config.seerr.users) || []
         },
         app: {
           name: document.getElementById('appName').value || 'WhatsApp Seerr Bridge'
@@ -621,7 +691,8 @@
           impersonate: {
             email: document.getElementById('srImpersonateEmail').value.trim(),
             password: document.getElementById('srImpersonatePassword').value
-          }
+          },
+          users: (config.seerr.users) || []
         },
         app: { name: document.getElementById('appName').value || 'WhatsApp Seerr Bridge' },
         server: { port: parseInt(document.getElementById('serverPort').value) || 7000 }
@@ -721,6 +792,10 @@
         document.getElementById('seerrStatusText').textContent = se.enabled
           ? 'Seerr: online' + (se.impersonating ? ' as ' + se.impersonating : '')
           : 'Seerr: off';
+        const userAccounts = se.userAccounts || [];
+        document.getElementById('seerrStatusText').title =
+          (se.impersonateConfigured ? 'impersonate: configured\n' : '') +
+          'per-user accounts: ' + (userAccounts.length ? userAccounts.join(', ') : 'none');
       } catch (e) { }
     }
 
@@ -739,7 +814,8 @@
           impersonate: {
             email: document.getElementById('srImpersonateEmail').value.trim(),
             password: document.getElementById('srImpersonatePassword').value
-          }
+          },
+          users: (config.seerr.users) || []
         };
         const r = await fetchJSON('/api/test/seerr', {
           method: 'POST',
@@ -802,7 +878,8 @@
             const statusColor = e.status >= 200 && e.status < 300 ? 'resp-ok' : (e.status ? 'resp-fail' : 'resp-fail');
             const statusTxt = e.status ? e.status : (e.error ? 'ERR' : '—');
             detail =
-              `<div class="line"><span class="k">${e.method || 'GET'}</span> ${escHtml(e.path)}</div>` +
+              `<div class="line"><span class="k">${e.method || 'GET'}</span> ${escHtml(e.path)}` +
+              (e.as ? ` <span class="k">as:</span> ${escHtml(e.as)}` : '') + '</div>' +
               (e.requestBody ? `<div class="line"><span class="k">body:</span> ${escHtml(e.requestBody)}</div>` : '') +
               `<div class="line"><span class="k">res:</span> <span class="${statusColor}">${statusTxt}</span> <span class="k">${e.durationMs}ms</span>` +
               (e.response ? ` — ${escHtml(e.response)}` : '') + '</div>' +

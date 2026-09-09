@@ -62,18 +62,30 @@ function encodeQueryValue(value) {
 class SeerrApi {
   constructor(config) {
     this.config = config;
-    this._userToken = null;
+    this._sessions = new Map(); // email -> { token, email, tried }
+    this._activeKey = null;
     this._userEmail = null;
-    this._userTried = false;
   }
 
   settings() {
     return this.config.seerr || {};
   }
 
+  userForNumber(effConfig, number) {
+    const users = Array.isArray(effConfig.users) ? effConfig.users : [];
+    const digits = String(number == null ? '' : number).replace(/\D/g, '');
+    if (!digits) return null;
+    return users.find((u) => u && String(u.number == null ? '' : u.number).replace(/\D/g, '') === digits) || null;
+  }
+
+  hasSessionCreds(effConfig) {
+    const s = effConfig || this.settings();
+    return Array.isArray(s.users) && s.users.some((u) => u && u.email && u.password);
+  }
+
   isConfigured() {
     const s = this.settings();
-    return !!s.url && (!!(s.apiKey) || !!(s.impersonate && s.impersonate.email && s.impersonate.password));
+    return !!s.url && (!!(s.apiKey) || !!(s.impersonate && s.impersonate.email && s.impersonate.password) || this.hasSessionCreds(s));
   }
 
   isEnabled() {
@@ -81,20 +93,30 @@ class SeerrApi {
     return s.enabled && this.isConfigured();
   }
 
-  async ensureUserAuth(configOverride) {
-    const s = this.settings();
-    const imp = (configOverride && configOverride.impersonate) || s.impersonate || {};
-    if (!imp.email || !imp.password) return null;
-    if (this._userToken && this._userEmail === imp.email && !this._userTried) {
-      return this._userToken;
+  async ensureUserAuth(configOverride, number) {
+    const eff = this.effective(configOverride);
+    const mapped = this.userForNumber(eff, number);
+    const imp = mapped
+      ? { email: mapped.email, password: mapped.password }
+      : ((eff.impersonate && eff.impersonate.email && eff.impersonate.password)
+          ? { email: eff.impersonate.email, password: eff.impersonate.password }
+          : null);
+    if (!imp) return null;
+    const key = imp.email;
+    this._activeKey = key;
+    const session = this._sessions.get(key);
+    if (session && session.token && !session.tried) {
+      return session.token;
     }
-    return this.login(imp.email, imp.password, configOverride);
+    return this.login(imp.email, imp.password, eff, key);
   }
 
-  async login(email, password, configOverride) {
+  async login(email, password, configOverride, cacheKey) {
     const eff = this.effective(configOverride);
     let base = this.baseUrl(eff);
     if (!base) throw new Error('Seerr URL not configured');
+
+    const key = cacheKey || email;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
@@ -125,7 +147,7 @@ class SeerrApi {
       if (!res.ok) {
         record.error = `Seerr login failed (${res.status}): ${debug.truncate(bodyText || res.statusText)}`;
         debug.log(record);
-        this._userTried = true;
+        this._sessions.set(key, { token: null, email, tried: true });
         throw new Error(record.error);
       }
 
@@ -153,9 +175,9 @@ class SeerrApi {
         hasToken: true
       });
       debug.log(record);
-      this._userToken = token;
+      this._sessions.set(key, { token, email: userEmail, tried: false });
+      this._activeKey = key;
       this._userEmail = userEmail;
-      this._userTried = false;
       return token;
     } catch (e) {
       if (!(e instanceof Error && e.message && e.message.startsWith('Seerr login failed'))) {
@@ -188,18 +210,18 @@ class SeerrApi {
     return !!(imp.email && imp.password);
   }
 
-  async fetchJson(path, options = {}, configOverride) {
+  async fetchJson(path, options = {}, configOverride, number) {
     const eff = this.effective(configOverride);
     let base = this.baseUrl(eff);
     if (!base) throw new Error('Seerr URL not configured');
 
-    const usingImpersonation = this.hasImpersonation(eff);
+    const usingCookie = this.hasImpersonation(eff) || !!this.userForNumber(eff, number);
     const url = `${base}${path}`;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       let token = '';
-      if (usingImpersonation) {
-        token = await this.ensureUserAuth(eff);
+      if (usingCookie) {
+        token = await this.ensureUserAuth(eff, number);
       }
 
       const controller = new AbortController();
@@ -215,13 +237,13 @@ class SeerrApi {
         status: null,
         durationMs: 0,
         error: null,
-        as: usingImpersonation ? this._userEmail || 'impersonated' : 'api-key'
+        as: usingCookie ? (this._userEmail || 'session') : 'api-key'
       };
 
       try {
         const startedAt = Date.now();
         const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-        if (usingImpersonation) {
+        if (usingCookie) {
           headers['Cookie'] = `connect.sid=${token}`;
         } else {
           headers['X-Api-Key'] = eff.apiKey || '';
@@ -245,12 +267,12 @@ class SeerrApi {
 
         if (!res.ok) {
           if (
-            usingImpersonation &&
+            usingCookie &&
             (res.status === 401 || res.status === 403) &&
             attempt === 0
           ) {
-            this._userToken = null;
-            this._userTried = false;
+            this._sessions.delete(this._activeKey);
+            this._activeKey = null;
             record.error = `Retrying as user (session ${res.status}: ${debug.truncate(body)})`;
             debug.log(record);
             continue;
@@ -276,17 +298,17 @@ class SeerrApi {
     }
   }
 
-  async search(query, mediaType = 'all', configOverride) {
+  async search(query, mediaType = 'all', configOverride, number) {
     const parts = [`query=${encodeQueryValue(query)}`];
-    return this.fetchJson(`/api/v1/search?${parts.join('&')}`, {}, configOverride);
+    return this.fetchJson(`/api/v1/search?${parts.join('&')}`, {}, configOverride, number);
   }
 
   async status(configOverride) {
     return this.fetchJson('/api/v1/status', {}, configOverride);
   }
 
-  async requestByTitle(title, mediaType, configOverride) {
-    const results = await this.search(title, mediaType, configOverride);
+  async requestByTitle(title, mediaType, configOverride, number) {
+    const results = await this.search(title, mediaType, configOverride, number);
     const items = results && Array.isArray(results.results) ? results.results : [];
     if (items.length === 0) {
       throw new Error(`No results found for "${title}"`);
@@ -298,21 +320,21 @@ class SeerrApi {
     return items[0];
   }
 
-  async requestMovie(title, configOverride) {
-    const media = await this.requestByTitle(title, 'movie', configOverride);
-    return this.submitRequest({ mediaType: 'movie', mediaId: media.id }, configOverride);
+  async requestMovie(title, configOverride, number) {
+    const media = await this.requestByTitle(title, 'movie', configOverride, number);
+    return this.submitRequest({ mediaType: 'movie', mediaId: media.id }, configOverride, number);
   }
 
-  async requestTv(title, configOverride) {
-    const media = await this.requestByTitle(title, 'tv', configOverride);
+  async requestTv(title, configOverride, number) {
+    const media = await this.requestByTitle(title, 'tv', configOverride, number);
     return this.submitRequest({
       mediaType: 'tv',
       mediaId: media.tmdbId || media.id,
       tvdbId: media.id
-    }, configOverride);
+    }, configOverride, number);
   }
 
-  async submitRequest(payload, configOverride) {
+  async submitRequest(payload, configOverride, number) {
     const body = Object.assign({}, payload);
     if (body.mediaType === 'tv' && body.seasons === undefined) {
       body.seasons = 'all';
@@ -320,15 +342,27 @@ class SeerrApi {
     return this.fetchJson('/api/v1/request', {
       method: 'POST',
       body: JSON.stringify(body)
-    }, configOverride);
+    }, configOverride, number);
   }
 
-  async requestByTitleSmart(title, configOverride) {
+  async requestByTitleSmart(title, configOverride, number) {
     try {
-      return { type: 'movie', result: await this.requestMovie(title, configOverride) };
+      return { type: 'movie', result: await this.requestMovie(title, configOverride, number) };
     } catch (e) {
-      return { type: 'tv', result: await this.requestTv(title, configOverride) };
+      return { type: 'tv', result: await this.requestTv(title, configOverride, number) };
     }
+  }
+
+  testActor(effConfig) {
+    const s = effConfig || this.settings();
+    if (s.impersonate && s.impersonate.email && s.impersonate.password) {
+      return { email: s.impersonate.email, password: s.impersonate.password };
+    }
+    const users = Array.isArray(s.users) ? s.users : [];
+    if (users.length && users[0].email && users[0].password) {
+      return { email: users[0].email, password: users[0].password };
+    }
+    return null;
   }
 
   async test(configOverride) {
@@ -370,9 +404,18 @@ class SeerrApi {
 
     let authOk = false;
     let authDetail = '';
+    const actor = this.testActor(eff);
+    const authCheckName = actor ? 'User login valid' : 'API key valid';
     if (statusOk) {
       try {
-        const results = await this.search('test', 'all', { ...eff, url: base });
+        let results;
+        if (actor) {
+          const authEff = { ...eff, url: base, impersonate: actor, users: [] };
+          await this.ensureUserAuth(authEff);
+          results = await this.search('test', 'all', authEff);
+        } else {
+          results = await this.search('test', 'all', { ...eff, url: base });
+        }
         authOk = true;
         authDetail = this._userEmail
           ? `Authenticated as ${this._userEmail} — search returned ${(results.results || []).length} result(s)`
@@ -380,12 +423,12 @@ class SeerrApi {
       } catch (e) {
         authDetail = e.message;
         if (/401|403/.test(e.message)) {
-          authDetail = this.hasImpersonation(eff)
-            ? 'Impersonation login or session rejected (401/403). Check the email/password and that the user may access Seerr.'
+          authDetail = actor
+            ? 'Seerr login or session rejected (401/403). Check the email/password and that the user may access Seerr.'
             : 'API key rejected (401/403). Double-check the key in Seerr → Settings → General.';
         }
       }
-      setResult(this.hasImpersonation(eff) ? 'User login valid' : 'API key valid', authOk, authDetail);
+      setResult(authCheckName, authOk, authDetail);
     }
 
     const ok = statusOk && authOk;
@@ -393,7 +436,7 @@ class SeerrApi {
       ok,
       url: base,
       apiKey: eff.apiKey ? 'set' : 'missing',
-      impersonating: this._userEmail || (this.hasImpersonation(eff) ? 'pending' : false),
+      impersonating: this._userEmail || (actor ? 'pending' : false),
       enabled: !!eff.enabled,
       checks
     };

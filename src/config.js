@@ -55,6 +55,7 @@ const DEFAULT_CONFIG = {
       email: '',
       password: ''
     },
+    users: [],
     type: 'overseerr',
     enabled: false
   },

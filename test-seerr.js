@@ -3,7 +3,7 @@ const SeerrApi = require('./src/seerr');
 
 function startMock() {
   return new Promise((resolve) => {
-    const seen = { cookies: [], apiKeys: [], requests: [] };
+    const seen = { cookies: [], apiKeys: [], requests: [], searches: [], logins: [] };
     const server = http.createServer((req, res) => {
       const cookie = req.headers.cookie || '';
       const cookies = (cookie.match(/connect\.sid=([^;]+)/g) || []).map((c) => c);
@@ -19,7 +19,12 @@ function startMock() {
           res.setHeader('Content-Type', 'application/json');
           if (body.email === 'bob@home' && body.password === 'pw') {
             res.setHeader('Set-Cookie', 'connect.sid=s%3Auser-bobby; Path=/; HttpOnly');
+            seen.logins.push('bob');
             res.end(JSON.stringify({ id: 7, email: 'bob@home', username: 'bobby', plexUsername: 'bobby' }));
+          } else if (body.email === 'carol@home' && body.password === 'carolpw') {
+            res.setHeader('Set-Cookie', 'connect.sid=s%3Auser-carol; Path=/; HttpOnly');
+            seen.logins.push('carol');
+            res.end(JSON.stringify({ id: 8, email: 'carol@home', username: 'carol', plexUsername: 'carol' }));
           } else {
             res.statusCode = 403;
             res.end(JSON.stringify({ message: 'Access denied.' }));
@@ -34,6 +39,7 @@ function startMock() {
       }
       if (req.url.startsWith('/api/v1/search')) {
         const u = new URL(req.url, 'http://mock');
+        seen.searches.push({ cookie, apiKey });
         if (u.searchParams.has('mediaType')) {
           res.statusCode = 400;
           res.setHeader('Content-Type', 'application/json');
@@ -132,6 +138,42 @@ function startMock() {
   await apiSub.submitRequest({ mediaType: 'tv', mediaId: 77 });
   const subReq = seen.requests[seen.requests.length - 1];
   if (subReq.body.seasons !== 'all') throw new Error('submitRequest should default tv seasons to all');
+
+  console.log('--- per-user cookie mapping ---');
+  const loginsBefore = seen.logins.length;
+  const apiU = new SeerrApi({
+    ...cfg,
+    seerr: {
+      ...cfg.seerr,
+      apiKey: '',
+      impersonate: { email: 'bob@home', password: 'pw' },
+      users: [
+        { number: '15551234567', email: 'bob@home', password: 'pw' },
+        { number: '15559998888', email: 'carol@home', password: 'carolpw' }
+      ]
+    }
+  });
+  await apiU.search('Dune', 'all', undefined, '15559998888');
+  const carolRec = seen.searches[seen.searches.length - 1];
+  console.log('carol search cookie:', carolRec.cookie);
+  if (!/connect\.sid=s%3Auser-carol/.test(carolRec.cookie)) throw new Error('expected carol session cookie for 15559998888');
+
+  await apiU.search('Dune', 'all', undefined, '15559998888');
+  console.log('carol logins so far:', seen.logins.slice(loginsBefore));
+  if (seen.logins.length !== loginsBefore + 1) throw new Error('expected carol to be logged in exactly once (session cached)');
+
+  await apiU.submitRequest({ mediaType: 'movie', mediaId: 5 }, undefined, '15559998888');
+  const pickRec = seen.requests[seen.requests.length - 1];
+  if (!/connect\.sid=s%3Auser-carol/.test(pickRec.cookie)) throw new Error('expected carol cookie on submitRequest');
+
+  await apiU.search('Dune', 'all', undefined, '15551234567');
+  const bobRec = seen.searches[seen.searches.length - 1];
+  if (!/connect\.sid=s%3Auser-bobby/.test(bobRec.cookie)) throw new Error('expected bob session cookie for 15551234567');
+
+  await apiU.search('Dune', 'all', undefined, '10001');
+  const unmappedRec = seen.searches[seen.searches.length - 1];
+  console.log('unmapped falls back to:', unmappedRec.cookie);
+  if (!/connect\.sid=s%3Auser-bobby/.test(unmappedRec.cookie)) throw new Error('expected impersonate fallback cookie for unmapped number');
 
   console.log('--- bad URL error messaging ---');
   const api4 = new SeerrApi({ ...cfg, seerr: { ...cfg.seerr, url: 'http://localhost:9' } });
