@@ -15,6 +15,13 @@ class WhatsAppBot {
     this.status = 'idle';
     this.lastError = null;
     this.isRunning = false;
+    this.selfNumber = '';
+    this._seenMsgIds = new Set();
+    this._pollSeen = new Set();
+    this._poller = null;
+    this._polling = false;
+    this._selfChatId = null;
+    this._pollerLogState = '';
   }
 
   getStatus() {
@@ -110,7 +117,7 @@ class WhatsAppBot {
       }
     });
 
-      this.client.on('qr', (qr) => {
+    this.client.on('qr', (qr) => {
       this.status = 'waiting_qr';
       this.qr = qr;
       if (this.callbacks.onQr) this.callbacks.onQr(qr);
@@ -145,7 +152,11 @@ class WhatsAppBot {
       this.status = 'disconnected';
       this.lastError = `Disconnected: ${reason}`;
       console.log('WhatsApp disconnected:', reason);
+      this.stopSelfChatPoller();
       if (this.callbacks.onDisconnect) this.callbacks.onDisconnect(reason);
+      if (this.isRunning) {
+        setTimeout(() => this.start(), 10000);
+      }
     });
 
     this.client.on('message', (message) => this.handleMessage(message));
@@ -156,10 +167,7 @@ class WhatsAppBot {
 
   async stop() {
     this.isRunning = false;
-    if (this._poller) {
-      clearInterval(this._poller);
-      this._poller = null;
-    }
+    this.stopSelfChatPoller();
     if (this.client) {
       try {
         await this.client.destroy();
@@ -171,14 +179,20 @@ class WhatsAppBot {
     this.status = 'stopped';
   }
 
+  stopSelfChatPoller() {
+    if (this._poller) {
+      clearInterval(this._poller);
+      this._poller = null;
+    }
+  }
+
   _msgId(message) {
     return (message && message.id && (message.id._serialized || message.id.id)) || null;
   }
 
   _isDeduped(message) {
     const id = this._msgId(message) || `${Date.now()}-${(message.body || '').slice(0, 20)}`;
-    if (this._seenMsgIds && this._seenMsgIds.has(id)) return false;
-    if (!this._seenMsgIds) this._seenMsgIds = new Set();
+    if (this._seenMsgIds.has(id)) return false;
     this._seenMsgIds.add(id);
     if (this._seenMsgIds.size > 5000) {
       const first = this._seenMsgIds.values().next().value;
@@ -187,13 +201,60 @@ class WhatsAppBot {
     return true;
   }
 
+  _num(message) {
+    const from = message.from || '';
+    const idx = from.indexOf('@');
+    return idx >= 0 ? from.slice(0, idx) : from;
+  }
+
   startSelfChatPoller() {
     if (this._poller) return;
-    if (this.cfg.whatsapp && this.cfg.whatsapp.allowSelfMessages === false) return;
-    this._pollSeen = this._pollSeen || new Set();
+    if (this.cfg.whatsapp && this.cfg.whatsapp.allowSelfMessages === false) {
+      console.log('Self-chat poller disabled (allowSelfMessages is off).');
+      return;
+    }
     this._poller = setInterval(() => this.pollSelfChat(), 4000);
     console.log('Self-chat poller started (checks \'Message Yourself\' every 4s).');
+    debug.log({ dir: 'system', event: 'self-chat-poller', detail: 'started — watching for messages you send to yourself' });
     this.pollSelfChat();
+  }
+
+  async findSelfChat() {
+    if (this._selfChatId) {
+      try {
+        return await this.client.getChatById(this._selfChatId);
+      } catch (_) {}
+      this._selfChatId = null;
+    }
+
+    const info = this.client.info || {};
+    const serialized = info.wid && info.wid._serialized;
+
+    if (serialized) {
+      try {
+        const chat = await this.client.getChatById(serialized);
+        this._selfChatId = chat.id._serialized;
+        return chat;
+      } catch (_) {}
+    }
+
+    try {
+      const chats = await this.client.getChats();
+      for (const c of chats) {
+        if (c.isGroup) continue;
+        let contact = null;
+        try { contact = await c.getContact(); } catch (_) {}
+        if (contact && contact.isMe) {
+          this._selfChatId = c.id._serialized;
+          return c;
+        }
+        if (c.id && this._num({ from: c.id._serialized }) === this.selfNumber) {
+          this._selfChatId = c.id._serialized;
+          return c;
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   async pollSelfChat() {
@@ -201,43 +262,65 @@ class WhatsAppBot {
     if (this._polling) return;
     this._polling = true;
     try {
-      let target = null;
-      const info = this.client.info || {};
-      const selfUser = (info.wid && info.wid.user) || '';
-      if (info.wid && info.wid._serialized) {
-        try {
-          target = await this.client.getChatById(info.wid._serialized);
-        } catch (_) {}
+      const target = await this.findSelfChat();
+
+      if (!target) {
+        const state = `no-self-chat (migrated @lid or not found)`;
+        if (this._pollerLogState !== state) {
+          this._pollerLogState = state;
+          debug.log({ dir: 'system', event: 'self-chat-poller', detail: state });
+          console.warn('Could not resolve the self-chat; using event listeners only.');
+        }
+        return;
       }
-      if (!target && selfUser) {
-        try {
-          const chats = await this.client.getChats();
-          target = chats.find((c) => !c.isGroup && c.id && (c.id.user || '') === selfUser) || null;
-        } catch (_) {}
+
+      const tstate = `chat=${this._selfChatId || '?'} ready=${this.status}`;
+      if (this._pollerLogState !== tstate) {
+        this._pollerLogState = tstate;
+        debug.log({ dir: 'system', event: 'self-chat-poller', detail: 'resolved self-chat ' + (this._selfChatId || '') });
       }
-      if (!target) return;
 
       let messages = [];
       try {
         messages = await target.fetchMessages({ limit: 30 });
       } catch (e) {
-        console.warn('Self-chat fetchMessages failed:', e.message);
+        debug.log({ dir: 'system', event: 'self-chat-poller', detail: 'fetchMessages failed: ' + e.message });
         return;
       }
 
+      if (!this._pollInitialized) {
+        this._pollInitialized = true;
+        for (const m of messages) {
+          const id = this._msgId(m);
+          if (id && m.fromMe) this._pollSeen.add(id);
+        }
+        return;
+      }
+
+      let processed = 0;
       for (const m of messages) {
         if (!m.fromMe) continue;
         const id = this._msgId(m);
         if (id && this._pollSeen.has(id)) continue;
-        if (id) this._pollSeen.add(id);
-        if (this._pollSeen.size > 5000) {
-          const first = this._pollSeen.values().next().value;
-          this._pollSeen.delete(first);
+        if (id) {
+          this._pollSeen.add(id);
+          if (this._pollSeen.size > 5000) {
+            const first = this._pollSeen.values().next().value;
+            this._pollSeen.delete(first);
+          }
         }
         await this.handleMessage(m, true);
+        processed++;
+      }
+      if (processed > 0) {
+        debug.log({ dir: 'system', event: 'self-chat-poller', detail: `processed ${processed} message(s) from self-chat` });
       }
     } catch (e) {
       console.warn('Self-chat poll error:', e.message);
+      if (this._pollerLogState !== 'error') {
+        this._pollerLogState = 'error';
+        debug.log({ dir: 'system', event: 'self-chat-poller', detail: 'error: ' + e.message });
+      }
     } finally {
       this._polling = false;
     }
@@ -325,24 +408,6 @@ class WhatsAppBot {
       console.error('Error handling message:', e);
       debug.log({ dir: 'whatsapp-recv', number: message.from || '?', body: debug.truncate(message.body, 200), reason: 'error: ' + e.message });
     }
-  }
-
-  _num(message) {
-    const from = message.from || '';
-    const idx = from.indexOf('@');
-    return idx >= 0 ? from.slice(0, idx) : from;
-  }
-
-  _isDeduped(message) {
-    const id = (message.id && (message.id.id || message.id._serialized)) || `${Date.now()}-${(message.body || '').slice(0, 20)}`;
-    if (this._seenMsgIds && this._seenMsgIds.has(id)) return false;
-    if (!this._seenMsgIds) this._seenMsgIds = new Set();
-    this._seenMsgIds.add(id);
-    if (this._seenMsgIds.size > 5000) {
-      const first = this._seenMsgIds.values().next().value;
-      this._seenMsgIds.delete(first);
-    }
-    return true;
   }
 }
 

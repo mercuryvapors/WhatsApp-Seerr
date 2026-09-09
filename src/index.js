@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const { loadConfig, saveConfig } = require('./config');
+const { loadConfig, saveConfig, DATA_DIR } = require('./config');
 const WhatsAppBot = require('./whatsapp');
 const SeerrApi = require('./seerr');
 const debug = require('./debug');
@@ -56,7 +56,7 @@ async function handleChatTest(reply) {
       const result = await seerr.test();
       const reach = result.checks.find((c) => c.name === 'Seerr reachable') || {};
       const auth = result.checks.find((c) => c.name === 'API key valid') || {};
-      lines.push(`Seerr URL: ${reach.ok ? '✅ reachable — ' + reach.detail : '❌ ' + reach.detail || 'no URL'}`);
+      lines.push(`Seerr URL: ${reach.ok ? '✅ reachable — ' + (reach.detail || '') : '❌ ' + (reach.detail || 'no URL')}`);
       lines.push(`API key: ${auth.ok ? '✅ valid' : '❌ ' + (auth.detail || 'invalid')}`);
     } catch (e) {
       lines.push('Seerr test failed: ' + e.message);
@@ -87,7 +87,7 @@ async function handleRequest(args, reply) {
   }
 
   try {
-    const requested = mediaType === 'tv' ? await seerr.requestTv(title) : await seerr.requestMovie(title);
+    await (mediaType === 'tv' ? seerr.requestTv(title) : seerr.requestMovie(title));
     return reply(`✅ Requested "*${title}*" successfully!`);
   } catch (e) {
     return reply(`❌ Failed to request "${title}": ${e.message}`);
@@ -246,7 +246,7 @@ app.listen(port, '0.0.0.0', () => {
     event: 'server-started',
     detail: debug.truncate({
       version: require('../package.json').version,
-      dataDir: config.DATA_DIR || 'see container env',
+      dataDir: DATA_DIR,
       waEnabled: config.whatsapp && config.whatsapp.enabled,
       seerrUrl: config.seerr && config.seerr.url
     })
