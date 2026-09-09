@@ -107,6 +107,19 @@ const run = (m) => bot.handleMessage(m);
   }));
   console.log('10 authoritative !me: ', triggered ? 'WRONGLY TRIGGERED' : 'skipped');
 
+  // 11) to === from (byte-identical JID) is self regardless of c.us/lid digits
+  bot.cfg.whatsapp.allowSelfMessages = true;
+  bot._seenMsgIds.clear();
+  bot.gotCmd = null;
+  bot.callbacks.onCommand = async () => { bot.gotCmd = 'samejid'; };
+  await run(makeMsg({
+    id: { id: 'SAMEJID', fromMe: true, _serialized: 'SAMEJID' },
+    from: '12897001910@lid',
+    to: '12897001910@lid',
+    getChat: async () => ({ id: { _serialized: '12897001910@lid' }, getContact: async () => ({ isMe: false }) })
+  }));
+  console.log('11 to===from:      ', bot.gotCmd === 'samejid' ? 'TRIGGERED' : 'not triggered');
+
   const fails = [];
   const all = debug.all();
   if (!(all.some((e) => e.reason === 'processing as self-test'))) fails.push('no processing-as-self-test log');

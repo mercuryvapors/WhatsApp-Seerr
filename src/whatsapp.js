@@ -408,11 +408,13 @@ class WhatsAppBot {
       const number = this._num(message);
       const toNum = this._num({ from: message.to });
       const isSelfDest = this.isOwnId(message.to);
+      const isSelfSender = !!(message.fromMe && message.to && message.from && message.to === message.from);
       const allowSelf = this.cfg.whatsapp.allowSelfMessages !== false;
       let isSelfChat =
         !!isSelfChatHint ||
         (message.fromMe &&
           (isSelfDest ||
+            isSelfSender ||
             (!!number && toNum === number) ||
             (!!number && !toNum && number === this.selfNumber)));
 
@@ -447,6 +449,7 @@ class WhatsAppBot {
           selfChatId: this._selfChatId || '',
           allowSelf,
           isSelfDest,
+          isSelfSender,
           isSelfChat,
           reason: allowSelf && isSelfChat ? 'processing as self-test' : 'skipped: outgoing message not to self'
         });
