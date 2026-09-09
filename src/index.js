@@ -20,9 +20,39 @@ const seerr = new SeerrApi(config);
 
 function handleCommand({ cmd, args, reply, number }) {
   const prefix = config.whatsapp.commandPrefix || '!';
+  debug.log({
+    dir: 'system',
+    event: 'command-entry',
+    detail: debug.truncate({
+      cmd,
+      args,
+      waEnabled: !!(config.whatsapp && config.whatsapp.enabled),
+      seerrEnabled: seerr.isEnabled(),
+      seerrUrl: seerr.settings().url
+    })
+  });
+  const run = (fn, label) => {
+    try {
+      return Promise.resolve(fn()).then(
+        (r) => {
+          debug.log({ dir: 'system', event: 'command-ok', detail: label });
+          return r;
+        },
+        (e) => {
+          console.error(`Command "${cmd}" (${label}) failed:`, e);
+          debug.log({ dir: 'system', event: 'command-error', detail: `${label}: ${e && e.message}` });
+          return reply(`❌ Command failed (${label}): ${e && e.message}`);
+        }
+      );
+    } catch (e) {
+      console.error(`Command "${cmd}" (${label}) threw synchronously:`, e);
+      debug.log({ dir: 'system', event: 'command-error', detail: `${label}: ${e && e.message}` });
+      return reply(`❌ Command failed (${label}): ${e && e.message}`);
+    }
+  };
   switch (cmd) {
     case 'help':
-      return reply(
+      return run(() => reply(
         `*${config.app.name || 'WhatsApp Seerr Bridge'}*\n\n` +
           `Available commands:\n` +
           `${prefix}request <title> - Request media (movie)\n` +
@@ -30,13 +60,13 @@ function handleCommand({ cmd, args, reply, number }) {
           `${prefix}request movie <title> - Request a movie\n` +
           `${prefix}test - Run a connection diagnostic\n` +
           `${prefix}help - Show this message`
-      );
+      ), 'help');
     case 'request':
-      return handleRequest(args, reply);
+      return run(() => handleRequest(args, reply), 'request');
     case 'test':
-      return handleChatTest(reply);
+      return run(() => handleChatTest(reply), 'test');
     default:
-      return reply(`Unknown command. Type ${prefix}help for available commands.`);
+      return run(() => reply(`Unknown command. Type ${prefix}help for available commands.`), 'default');
   }
 }
 
@@ -240,24 +270,28 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-const port = parseInt(process.env.PORT, 10) || config.server.port || 7000;
-app.listen(port, '0.0.0.0', () => {
-  console.log(`${config.app.name || 'WhatsApp Seerr Bridge'} running on port ${port}`);
-  debug.log({
-    dir: 'system',
-    event: 'server-started',
-    detail: debug.truncate({
-      version: require('../package.json').version,
-      gitSha: (process.env.GIT_SHA || 'dev').slice(0, 7),
-      dataDir: DATA_DIR,
-      waEnabled: config.whatsapp && config.whatsapp.enabled,
-      seerrUrl: config.seerr && config.seerr.url
-    })
+if (require.main === module) {
+  const port = parseInt(process.env.PORT, 10) || config.server.port || 7000;
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`${config.app.name || 'WhatsApp Seerr Bridge'} running on port ${port}`);
+    debug.log({
+      dir: 'system',
+      event: 'server-started',
+      detail: debug.truncate({
+        version: require('../package.json').version,
+        gitSha: (process.env.GIT_SHA || 'dev').slice(0, 7),
+        dataDir: DATA_DIR,
+        waEnabled: config.whatsapp && config.whatsapp.enabled,
+        seerrUrl: config.seerr && config.seerr.url
+      })
+    });
+    if (config.whatsapp && config.whatsapp.enabled) {
+      bot.start();
+    }
+    if (config.seerr && !config.seerr.url) {
+      console.log('Seerr is not configured. Open the web UI to configure it.');
+    }
   });
-  if (config.whatsapp && config.whatsapp.enabled) {
-    bot.start();
-  }
-  if (config.seerr && !config.seerr.url) {
-    console.log('Seerr is not configured. Open the web UI to configure it.');
-  }
-});
+}
+
+module.exports = { app, config: () => config, applyConfig, handleCommand, bot, seerr, debug };
