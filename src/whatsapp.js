@@ -30,6 +30,8 @@ class WhatsAppBot {
       qr: this.qr,
       error: this.lastError,
       configured: !!(this.cfg.whatsapp && this.cfg.whatsapp.enabled),
+      selfNumber: this.selfNumber,
+      allowSelfMessages: !!(this.cfg.whatsapp && this.cfg.whatsapp.allowSelfMessages !== false),
       selfChat: {
         poller: this._poller ? 'running' : 'stopped',
         pollState: this._pollerLogState || 'idle',
@@ -347,8 +349,21 @@ class WhatsAppBot {
       const isSelfChat = !!isSelfChatHint || (message.fromMe && !!number && (toNum === number || (!toNum && number === this.selfNumber)));
       const allowSelf = this.cfg.whatsapp.allowSelfMessages !== false;
 
+      if (message.fromMe) {
+        debug.log({
+          dir: 'whatsapp-recv',
+          number,
+          body: debug.truncate(message.body, 200),
+          fromMe: true,
+          toNum,
+          selfNumber: this.selfNumber,
+          allowSelf,
+          isSelfChat,
+          reason: allowSelf && isSelfChat ? 'processing as self-test' : 'skipped: outgoing message not to self'
+        });
+      }
+
       if (message.fromMe && !(allowSelf && isSelfChat)) {
-        debug.log({ dir: 'whatsapp-recv', number, body: debug.truncate(message.body, 200), reason: 'skipped: outgoing message not to self' });
         return;
       }
 

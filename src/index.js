@@ -85,9 +85,9 @@ async function handleChatTest(reply) {
     try {
       const result = await seerr.test();
       const reach = result.checks.find((c) => c.name === 'Seerr reachable') || {};
-      const auth = result.checks.find((c) => c.name === 'API key valid') || {};
+      const auth = result.checks.find((c) => c.name === 'API key valid' || c.name === 'User login valid') || {};
       lines.push(`Seerr URL: ${reach.ok ? '✅ reachable — ' + (reach.detail || '') : '❌ ' + (reach.detail || 'no URL')}`);
-      lines.push(`API key: ${auth.ok ? '✅ valid' : '❌ ' + (auth.detail || 'invalid')}`);
+      lines.push(`${auth.name || 'Auth'}: ${auth.ok ? '✅ ' + (auth.detail || 'valid') : '❌ ' + (auth.detail || 'invalid')}`);
     } catch (e) {
       lines.push('Seerr test failed: ' + e.message);
     }
