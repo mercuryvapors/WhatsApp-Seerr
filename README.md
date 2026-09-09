@@ -77,7 +77,7 @@ list and installs with pre-populated fields (port, data path, env):
 1. In Unraid WebUI, open **Apps** → **Settings** → **Template Repositories**
    (or the Community Applications plugin **Template Repositories** tab).
 2. Add the following GitHub repository:
-   `https://github.com/mercuryvapors/WhatsApp-Seerr`
+   `https://github.com/mercuryvapors/whatsapp-seerr`
 3. Update the app feed (Apps → Settings → **Update Apps/Feed**).
 4. Search for **whatsapp-seerr** in Apps, click the result, then **Install**.
    The WebUI port, data path, and environment variables are applied

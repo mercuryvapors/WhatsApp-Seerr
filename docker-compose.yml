@@ -9,7 +9,7 @@ services:
     # Unraid: labels drive the WebUI button shown on the Docker page
     labels:
       - net.unraid.docker.webui=http://[IP]:[PORT:7000]
-      - net.unraid.docker.icon=https://raw.githubusercontent.com/mercuryvapors/WhatsApp-Seerr/main/public/icon.svg
+      - net.unraid.docker.icon=https://raw.githubusercontent.com/mercuryvapors/whatsapp-seerr/main/public/icon.svg
       - net.unraid.docker.shell=bash
     # Chromium's renderer crashes with Docker's default 64MB /dev/shm
     shm_size: 1gb
