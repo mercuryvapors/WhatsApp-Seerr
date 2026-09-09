@@ -137,6 +137,7 @@ class WhatsAppBot {
       } catch (_) {}
       this.selfNumber = own.replace(/\D/g, '');
       console.log('WhatsApp client is ready!' + (own ? ' (own number: ' + own + ')' : ''));
+      this.startSelfChatPoller();
       if (this.callbacks.onReady) this.callbacks.onReady();
     });
 
@@ -155,6 +156,10 @@ class WhatsAppBot {
 
   async stop() {
     this.isRunning = false;
+    if (this._poller) {
+      clearInterval(this._poller);
+      this._poller = null;
+    }
     if (this.client) {
       try {
         await this.client.destroy();
@@ -166,7 +171,79 @@ class WhatsAppBot {
     this.status = 'stopped';
   }
 
-  async handleMessage(message) {
+  _msgId(message) {
+    return (message && message.id && (message.id._serialized || message.id.id)) || null;
+  }
+
+  _isDeduped(message) {
+    const id = this._msgId(message) || `${Date.now()}-${(message.body || '').slice(0, 20)}`;
+    if (this._seenMsgIds && this._seenMsgIds.has(id)) return false;
+    if (!this._seenMsgIds) this._seenMsgIds = new Set();
+    this._seenMsgIds.add(id);
+    if (this._seenMsgIds.size > 5000) {
+      const first = this._seenMsgIds.values().next().value;
+      this._seenMsgIds.delete(first);
+    }
+    return true;
+  }
+
+  startSelfChatPoller() {
+    if (this._poller) return;
+    if (this.cfg.whatsapp && this.cfg.whatsapp.allowSelfMessages === false) return;
+    this._pollSeen = this._pollSeen || new Set();
+    this._poller = setInterval(() => this.pollSelfChat(), 4000);
+    console.log('Self-chat poller started (checks \'Message Yourself\' every 4s).');
+    this.pollSelfChat();
+  }
+
+  async pollSelfChat() {
+    if (!this.client || this.status !== 'ready') return;
+    if (this._polling) return;
+    this._polling = true;
+    try {
+      let target = null;
+      const info = this.client.info || {};
+      const selfUser = (info.wid && info.wid.user) || '';
+      if (info.wid && info.wid._serialized) {
+        try {
+          target = await this.client.getChatById(info.wid._serialized);
+        } catch (_) {}
+      }
+      if (!target && selfUser) {
+        try {
+          const chats = await this.client.getChats();
+          target = chats.find((c) => !c.isGroup && c.id && (c.id.user || '') === selfUser) || null;
+        } catch (_) {}
+      }
+      if (!target) return;
+
+      let messages = [];
+      try {
+        messages = await target.fetchMessages({ limit: 30 });
+      } catch (e) {
+        console.warn('Self-chat fetchMessages failed:', e.message);
+        return;
+      }
+
+      for (const m of messages) {
+        if (!m.fromMe) continue;
+        const id = this._msgId(m);
+        if (id && this._pollSeen.has(id)) continue;
+        if (id) this._pollSeen.add(id);
+        if (this._pollSeen.size > 5000) {
+          const first = this._pollSeen.values().next().value;
+          this._pollSeen.delete(first);
+        }
+        await this.handleMessage(m, true);
+      }
+    } catch (e) {
+      console.warn('Self-chat poll error:', e.message);
+    } finally {
+      this._polling = false;
+    }
+  }
+
+  async handleMessage(message, isSelfChatHint) {
     try {
       if (!this.cfg.whatsapp || !this.cfg.whatsapp.enabled) {
         debug.log({ dir: 'whatsapp-recv', number: this._num(message), body: debug.truncate(message.body, 200), reason: 'skipped: bot disabled' });
@@ -177,7 +254,7 @@ class WhatsAppBot {
 
       const number = this._num(message);
       const toNum = this._num({ from: message.to });
-      let isSelfChat = message.fromMe && !!number && (toNum === number || (!toNum && number === this.selfNumber));
+      const isSelfChat = !!isSelfChatHint || (message.fromMe && !!number && (toNum === number || (!toNum && number === this.selfNumber)));
       const allowSelf = this.cfg.whatsapp.allowSelfMessages !== false;
 
       if (message.fromMe && !(allowSelf && isSelfChat)) {
