@@ -255,6 +255,24 @@ class WhatsAppBot {
     this.pollSelfChat();
   }
 
+  ownChatCandidates() {
+    const set = new Set();
+    const info = (this.client && this.client.info) || {};
+    const sources = [info.wid, info.me && info.me.wid].filter(Boolean);
+    for (const w of sources) {
+      if (!w) continue;
+      const serialized = w._serialized;
+      const user = String(w.user || '').replace(/\D/g, '');
+      if (serialized) set.add(serialized);
+      if (user) {
+        set.add(user + '@c.us');
+        set.add(user + '@lid');
+      }
+    }
+    if (this._selfChatId) set.add(this._selfChatId);
+    return [...set];
+  }
+
   async findSelfChat() {
     if (this._selfChatId) {
       try {
@@ -263,20 +281,25 @@ class WhatsAppBot {
       this._selfChatId = null;
     }
 
-    const info = this.client.info || {};
-    const serialized = info.wid && info.wid._serialized;
-
-    if (serialized) {
+    for (const id of this.ownChatCandidates()) {
       try {
-        const chat = await this.client.getChatById(serialized);
-        this._selfChatId = chat.id._serialized;
-        this.updateOwnIds();
-        return chat;
+        const chat = await this.client.getChatById(id);
+        if (!chat) continue;
+        let contact = null;
+        try { contact = await chat.getContact(); } catch (_) {}
+        const meLabel = this.client.info && (this.client.info.pushname || (this.client.info.me && this.client.info.me.pushname));
+        const nameMatch = contact && meLabel && (contact.name || contact.shortName) === meLabel;
+        if ((contact && contact.isMe) || nameMatch || (chat.id && this._num({ from: chat.id._serialized }) === this.selfNumber)) {
+          this._selfChatId = chat.id._serialized;
+          this.updateOwnIds();
+          return chat;
+        }
       } catch (_) {}
     }
 
     try {
       const chats = await this.client.getChats();
+      this._chatsScanned = chats.length;
       for (const c of chats) {
         if (c.isGroup) continue;
         let contact = null;
@@ -310,7 +333,9 @@ class WhatsAppBot {
       const target = await this.findSelfChat();
 
       if (!target) {
-        const state = `no-self-chat (migrated @lid or not found)`;
+        const info = (this.client && this.client.info) || {};
+        const widSer = (info.wid && info.wid._serialized) || '';
+        const state = `no-self-chat (selfNumber=${this.selfNumber || '?'} wid=${widSer || '?'} tried=[${this.ownChatCandidates().join(', ')}] chats=${this._chatsScanned ?? '?'})`;
         if (this._pollerLogState !== state) {
           this._pollerLogState = state;
           debug.log({ dir: 'system', event: 'self-chat-poller', detail: state });
