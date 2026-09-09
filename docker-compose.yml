@@ -1,12 +1,16 @@
-version: "3.8"
-
 services:
   whatsapp-seerr:
     image: ghcr.io/mercuryvapors/whatsapp-seerr:latest
     container_name: whatsapp-seerr
     restart: unless-stopped
+    network_mode: bridge
     ports:
       - "7000:7000"
+    # Unraid: labels drive the WebUI button shown on the Docker page
+    labels:
+      - net.unraid.docker.webui=http://[IP]:[PORT:7000]
+      - net.unraid.docker.icon=https://raw.githubusercontent.com/mercuryvapors/WhatsApp-Seerr/main/public/icon.svg
+      - net.unraid.docker.shell=bash
     # Chromium's renderer crashes with Docker's default 64MB /dev/shm
     shm_size: 1gb
     volumes:
