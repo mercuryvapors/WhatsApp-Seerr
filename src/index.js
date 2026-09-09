@@ -96,19 +96,27 @@ async function handleRequest(args, reply) {
 
 function applyConfig(newConfig) {
   config = newConfig;
-  saveConfig(config);
+  try {
+    saveConfig(config);
+    debug.log({
+      dir: 'system',
+      event: 'config-saved',
+      detail: debug.truncate({
+        waEnabled: config.whatsapp.enabled,
+        seerrEnabled: config.seerr.enabled,
+        seerrUrl: config.seerr.url
+      })
+    });
+  } catch (e) {
+    debug.log({
+      dir: 'system',
+      event: 'config-save-failed',
+      detail: e.message
+    });
+    console.error('Failed to save config:', e.message);
+  }
   seerr.config = config;
   bot.cfg = config;
-
-  debug.log({
-    dir: 'system',
-    event: 'config-saved',
-    detail: debug.truncate({
-      waEnabled: config.whatsapp.enabled,
-      seerrEnabled: config.seerr.enabled,
-      seerrUrl: config.seerr.url
-    })
-  });
 
   const shouldRun = config.whatsapp && config.whatsapp.enabled;
   if (shouldRun && bot.getStatus().status !== 'ready' && !bot.isRunning) {
@@ -233,6 +241,16 @@ app.get('*', (req, res) => {
 const port = parseInt(process.env.PORT, 10) || config.server.port || 7000;
 app.listen(port, '0.0.0.0', () => {
   console.log(`${config.app.name || 'WhatsApp Seerr Bridge'} running on port ${port}`);
+  debug.log({
+    dir: 'system',
+    event: 'server-started',
+    detail: debug.truncate({
+      version: require('../package.json').version,
+      dataDir: config.DATA_DIR || 'see container env',
+      waEnabled: config.whatsapp && config.whatsapp.enabled,
+      seerrUrl: config.seerr && config.seerr.url
+    })
+  });
   if (config.whatsapp && config.whatsapp.enabled) {
     bot.start();
   }

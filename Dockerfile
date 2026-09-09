@@ -54,6 +54,8 @@ COPY public/ public/
 
 ENV DATA_DIR=/data
 
+RUN mkdir -p /data && chmod 777 /data
+
 VOLUME ["/data"]
 
 # /dev/shm: Docker defaults to 64MB which crashes Chromium's renderer
