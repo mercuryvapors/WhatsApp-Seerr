@@ -6,7 +6,7 @@
   <Overview>Bridge WhatsApp to Seerr (Overseerr/Jellyseerr) for media requests. Users request movies/shows directly from a WhatsApp chat. If you see 'Navigating frame was detached' in the logs, add --shm-size=1gb to Extra Parameters (Advanced) - Chromium renderer crashes with Docker's default 64MB /dev/shm.</Overview>
   <Category>Other:</Category>
   <WebUI>http://[IP]:[PORT:7000]</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/mercuryvapors/WhatsApp-Seerr/main/unraid-template.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/mercuryvapors/WhatsApp-Seerr/main/whatsapp-seerr.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/mercuryvapors/WhatsApp-Seerr/main/public/icon.svg</Icon>
   <Requires>
     <Network>bridge</Network>

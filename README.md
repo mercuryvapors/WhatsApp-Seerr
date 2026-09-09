@@ -68,15 +68,13 @@ Send a message to the linked WhatsApp number:
 
 ## Unraid
 
-1. Make sure the `ghcr.io/mercuryvapors/whatsapp-seerr` image is accessible. Add the container via the included `unraid-template.xml` template.
+1. Make sure the `ghcr.io/mercuryvapors/whatsapp-seerr` image is accessible. Add the container via the included `whatsapp-seerr.xml` template.
 2. Map the **Web UI Port** to host port `7000`.
 3. Map a **Data Path** to `/mnt/user/appdata/whatsapp-seerr` (keeps session + config persistent).
 4. In Advanced view, add `--shm-size=1gb` to **Extra Parameters** (see note above).
 5. Open the WebUI from the Unraid dashboard.
 
-To install the template: copy `unraid-template.xml` to your flash drive at
-`/config/plugins/dockerMan/templates-user/`, then in Unraid WebUI go to
-**Docker → Add Container** and pick **WhatsAppSeerrBridge**.
+To install the template: copy `whatsapp-seerr.xml` to your flash drive at`/config/plugins/dockerMan/templates-user/`, then in Unraid WebUI go to**Docker → Add Container** and pick **WhatsAppSeerrBridge**.
 
 ## Configuration
 
