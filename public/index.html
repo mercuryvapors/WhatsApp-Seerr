@@ -813,7 +813,11 @@
               detail +=
                 `<div class="line"><span class="k">to:</span> ${escHtml(e.to)} <span class="k">toNum:</span> ${escHtml(e.toNum)}</div>` +
                 `<div class="line"><span class="k">selfNumber:</span> ${escHtml(e.selfNumber)} <span class="k">selfChatId:</span> ${escHtml(e.selfChatId)}</div>` +
-                `<div class="line"><span class="k">allowSelf:</span> ${escHtml(e.allowSelf)} <span class="k">isSelfDest:</span> ${escHtml(e.isSelfDest)} <span class="k">isSelfSender:</span> ${escHtml(e.isSelfSender)} <span class="k">isSelfChat:</span> ${escHtml(e.isSelfChat)}</div>`;
+                `<div class="line"><span class="k">allowSelf:</span> ${escHtml(e.allowSelf)} <span class="k">isSelfDest:</span> ${escHtml(e.isSelfDest)} <span class="k">isSelfSender:</span> ${escHtml(e.isSelfSender)} <span class="k">isSelfChat:</span> ${escHtml(e.isSelfChat)}</div>` +
+                (e.lidFound !== undefined
+                  ? `<div class="line"><span class="k">lidFound:</span> ${escHtml(e.lidFound)} <span class="k">lidIsMe:</span> ${escHtml(e.lidIsMe)} <span class="k">lidNumber:</span> ${escHtml(e.lidNumber)}</div>` +
+                    (e.lidError ? `<div class="line resp-fail"><span class="k">lidError:</span> ${escHtml(e.lidError)}</div>` : '')
+                  : '');
             }
           } else if (e.dir === 'whatsapp-command') {
             detail = `<div class="line"><span class="k">number:</span> ${escHtml(e.number)} <span class="k">cmd:</span> !${escHtml(e.cmd)}${e.args ? ' <span class="k">args:</span> ' + escHtml(e.args) : ''}</div>`;

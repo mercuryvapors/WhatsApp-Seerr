@@ -237,18 +237,27 @@ class WhatsAppBot {
   }
 
   async resolveContactForSelf(message, chat) {
+    const out = { found: false, isMe: false, number: '', error: '', self: false, chatId: '' };
     let contact = null;
     if (chat) {
-      try { contact = await chat.getContact(); } catch (_) {}
+      try { contact = await chat.getContact(); } catch (e) { out.error = out.error || ('chat.getContact: ' + e.message); }
     }
     if (!contact && message.to) {
-      try { contact = await this.client.getContactById(message.to); } catch (_) {}
+      try { contact = await this.client.getContactById(message.to); } catch (e) { out.error = (out.error ? out.error + '; ' : '') + ('getContactById: ' + e.message); }
     }
-    if (!contact) return null;
-    const contactNumber = String(contact.number || '').replace(/\D/g, '');
-    const matchesNumber = !!(this.selfNumber && contactNumber && contactNumber === this.selfNumber);
-    if (!contact.isMe && !matchesNumber) return null;
-    return { self: true, chatId: (chat && chat.id && chat.id._serialized) || message.to || '' };
+    if (!contact) return out;
+    out.found = true;
+    out.isMe = !!contact.isMe;
+    out.number = String(contact.number || '');
+    if (!out.isMe && out.number && this.selfNumber && out.number.replace(/\D/g, '') === this.selfNumber) {
+      out.self = true;
+    } else if (out.isMe) {
+      out.self = true;
+    }
+    if (out.self) {
+      out.chatId = (chat && chat.id && chat.id._serialized) || message.to || '';
+    }
+    return out;
   }
 
   _num(message) {
@@ -434,6 +443,7 @@ class WhatsAppBot {
             (!!number && !toNum && number === this.selfNumber)));
 
       let chat = null;
+      let lidDiag = null;
       if (message.fromMe) {
         try {
           chat = await message.getChat();
@@ -451,10 +461,10 @@ class WhatsAppBot {
           } catch (e) {}
         }
         if (!isSelfChat) {
-          const contact = await this.resolveContactForSelf(message, chat);
-          if (contact && contact.self) {
+          lidDiag = await this.resolveContactForSelf(message, chat);
+          if (lidDiag && lidDiag.self && lidDiag.chatId) {
             isSelfChat = true;
-            this._selfChatId = contact.chatId;
+            this._selfChatId = lidDiag.chatId;
             this.updateOwnIds();
           }
         }
@@ -474,6 +484,10 @@ class WhatsAppBot {
           isSelfDest,
           isSelfSender,
           isSelfChat,
+          lidFound: lidDiag ? lidDiag.found : undefined,
+          lidIsMe: lidDiag ? lidDiag.isMe : undefined,
+          lidNumber: lidDiag ? lidDiag.number : undefined,
+          lidError: lidDiag ? lidDiag.error : undefined,
           reason: allowSelf && isSelfChat ? 'processing as self-test' : 'skipped: outgoing message not to self'
         });
       }
