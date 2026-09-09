@@ -383,13 +383,32 @@ class WhatsAppBot {
       const number = this._num(message);
       const toNum = this._num({ from: message.to });
       const isSelfDest = this.isOwnId(message.to);
-      const isSelfChat =
+      const allowSelf = this.cfg.whatsapp.allowSelfMessages !== false;
+      let isSelfChat =
         !!isSelfChatHint ||
         (message.fromMe &&
           (isSelfDest ||
             (!!number && toNum === number) ||
             (!!number && !toNum && number === this.selfNumber)));
-      const allowSelf = this.cfg.whatsapp.allowSelfMessages !== false;
+
+      let chat = null;
+      if (message.fromMe) {
+        try {
+          chat = await message.getChat();
+        } catch (e) {
+          console.warn('Could not resolve chat for outgoing message:', e.message);
+        }
+        if (chat && !isSelfChat) {
+          try {
+            const contact = await chat.getContact();
+            if (contact && contact.isMe) {
+              isSelfChat = true;
+              this._selfChatId = chat.id._serialized;
+              this.updateOwnIds();
+            }
+          } catch (e) {}
+        }
+      }
 
       if (message.fromMe) {
         debug.log({
@@ -444,11 +463,12 @@ class WhatsAppBot {
       const cmd = command.toLowerCase();
       debug.log({ dir: 'whatsapp-command', number, cmd, args: debug.truncate(args, 200) });
 
-      let chat = null;
-      try {
-        chat = await message.getChat();
-      } catch (e) {
-        console.warn('Could not resolve chat for message, continuing without it:', e.message);
+      if (!chat) {
+        try {
+          chat = await message.getChat();
+        } catch (e) {
+          console.warn('Could not resolve chat for message, continuing without it:', e.message);
+        }
       }
 
       if (this.callbacks.onCommand) {

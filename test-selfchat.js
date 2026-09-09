@@ -77,8 +77,35 @@ const run = (m) => bot.handleMessage(m);
   bot._ownIds.add('12897001910@c.us');
   let triggered = false;
   bot.callbacks.onCommand = async () => { triggered = true; };
-  await run(makeMsg({ id: { id: 'OUT2', fromMe: true, _serialized: 'OUT2' }, from: '15551234567@c.us', to: '14445550000@lid', selfNumber: '12897001910' }));
+  await run(makeMsg({ id: { id: 'OUT2', fromMe: true, _serialized: 'OUT2' }, from: '15551234567@c.us', to: '14445550000@lid' }));
   console.log('8 ownIds other-to: ', triggered ? 'WRONGLY TRIGGERED' : 'skipped');
+
+  // 9) Authoritative chat-contact.isMe: quick check misses it, chat says it's me
+  bot.cfg.whatsapp.allowSelfMessages = true;
+  bot._seenMsgIds.clear();
+  bot.gotCmd = null;
+  bot.callbacks.onCommand = async () => { bot.gotCmd = 'isme'; };
+  bot._ownIds.clear();
+  bot.updateOwnIds();
+  await run(makeMsg({
+    id: { id: 'ISME', fromMe: true, _serialized: 'ISME' },
+    from: '12897001910@c.us',
+    to: '12897001910-something@c.us',
+    getChat: async () => ({ id: { _serialized: '12897001910-something@c.us' }, getContact: async () => ({ isMe: true }) })
+  }));
+  console.log('9 authoritative isMe:', bot.gotCmd ? 'TRIGGERED' : 'not triggered');
+
+  // 10) Authoritative chat-contact.isMe false: outgoing to a real friend must skip
+  bot._seenMsgIds.clear();
+  triggered = false;
+  bot.callbacks.onCommand = async () => { triggered = true; };
+  await run(makeMsg({
+    id: { id: 'NOTME', fromMe: true, _serialized: 'NOTME' },
+    from: '12897001910@c.us',
+    to: '14445550000@c.us',
+    getChat: async () => ({ id: { _serialized: '14445550000@c.us' }, getContact: async () => ({ isMe: false }) })
+  }));
+  console.log('10 authoritative !me: ', triggered ? 'WRONGLY TRIGGERED' : 'skipped');
 
   const fails = [];
   const all = debug.all();
