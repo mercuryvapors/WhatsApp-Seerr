@@ -697,7 +697,16 @@
       list.innerHTML = '<div class="hint">Testing…</div>';
       btn.disabled = true;
       try {
-        const r = await fetchJSON('/api/test/seerr', { method: 'POST' });
+        const payload = {
+          url: document.getElementById('srUrl').value.trim(),
+          apiKey: document.getElementById('srKey').value.trim(),
+          enabled: document.getElementById('srEnabled').checked
+        };
+        const r = await fetchJSON('/api/test/seerr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
         list.innerHTML = '';
         if (r.checks) {
           r.checks.forEach((c) => {

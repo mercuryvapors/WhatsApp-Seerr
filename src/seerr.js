@@ -26,8 +26,9 @@ class SeerrApi {
     return this.config.seerr.enabled && this.isConfigured();
   }
 
-  async request(path, options = {}) {
-    const base = this.baseUrl();
+  async request(path, options = {}, configOverride) {
+    const eff = configOverride || this.config.seerr;
+    const base = (eff.url || '').replace(/\/+$/, '');
     if (!base) throw new Error('Seerr URL not configured');
 
     const started = Date.now();
@@ -39,13 +40,18 @@ class SeerrApi {
       response: '',
       status: null,
       durationMs: 0,
-      error: null
+      error: null,
+      base: base
     };
 
     try {
       const res = await fetch(`${base}${path}`, {
         ...options,
-        headers: this.headers(options.headers)
+        headers: {
+          'X-Api-Key': eff.apiKey || '',
+          'Content-Type': 'application/json',
+          ...(options.headers || {})
+        }
       });
       record.status = res.status;
       record.durationMs = Date.now() - started;
@@ -66,10 +72,10 @@ class SeerrApi {
     }
   }
 
-  async search(query, mediaType = 'all') {
+  async search(query, mediaType = 'all', configOverride) {
     const params = new URLSearchParams({ query });
     if (mediaType && mediaType !== 'all') params.set('mediaType', mediaType);
-    return this.request(`/api/v1/search?${params.toString()}`);
+    return this.request(`/api/v1/search?${params.toString()}`, {}, configOverride);
   }
 
   async requestByTitle(title, mediaType) {
@@ -120,18 +126,22 @@ class SeerrApi {
     return type === 'tv' ? this.requestTv.bind(this) : this.requestMovie.bind(this);
   }
 
-  async test() {
+  async test(overrides) {
     const checks = [];
-    const base = this.baseUrl();
+    const saved = this.config.seerr;
+    const merged = overrides && (overrides.url || overrides.apiKey || 'enabled' in overrides)
+      ? { ...saved, ...overrides }
+      : saved;
+    const base = (merged.url || '').replace(/\/+$/, '');
 
     if (!base) {
       return {
         ok: false,
         url: '',
-        apiKey: this.config.seerr.apiKey ? 'set' : 'missing',
+        apiKey: merged.apiKey ? 'set' : 'missing',
         checks: [
           { name: 'URL configured', ok: false, detail: 'No Seerr URL set' },
-          { name: 'API key configured', ok: !!this.config.seerr.apiKey, detail: this.config.seerr.apiKey ? 'set' : 'missing' }
+          { name: 'API key configured', ok: !!merged.apiKey, detail: merged.apiKey ? 'set' : 'missing' }
         ]
       };
     }
@@ -139,13 +149,19 @@ class SeerrApi {
     let statusDetail = '';
     let statusOk = false;
     try {
-      const status = await this.request('/api/v1/status');
+      const status = await this.request('/api/v1/status', {}, { ...saved, url: base, apiKey: merged.apiKey });
       statusOk = !!status.version;
       statusDetail = status.version
         ? `Version ${status.version} (${status.commitTag || 'n/a'})${status.name ? ' — ' + status.name : ''}`
         : 'Reachable, but not a Seerr API';
     } catch (e) {
       statusDetail = e.message;
+      const host = base.replace(/^[^:]+:\/\//, '').split('/')[0];
+      if (host.startsWith('localhost') || host.startsWith('127.0.0.1')) {
+        statusDetail += ' — tip: inside the container, localhost is this container, not your host. Use the host IP or host.docker.internal.';
+      } else if (host.startsWith('host.docker.internal') && /getaddrinfo|ENOTFOUND|fetch failed/i.test(e.message)) {
+        statusDetail += ' — tip: host.docker.internal is not mapped. Use your host LAN IP (e.g. http://192.168.1.50:5055), or run with --add-host host.docker.internal:host-gateway.';
+      }
     }
     checks.push({ name: 'Seerr reachable', ok: statusOk, detail: statusDetail });
 
@@ -153,7 +169,7 @@ class SeerrApi {
     let authDetail = '';
     if (statusOk) {
       try {
-        const results = await this.search('test');
+        const results = await this.search('test', null, { ...saved, url: base, apiKey: merged.apiKey });
         authOk = true;
         authDetail = `API key accepted — search returned ${(results.results || []).length} result(s)`;
       } catch (e) {
@@ -169,8 +185,8 @@ class SeerrApi {
     return {
       ok,
       url: base,
-      apiKey: this.config.seerr.apiKey ? 'set' : 'missing',
-      enabled: !!this.config.seerr.enabled,
+      apiKey: merged.apiKey ? 'set' : 'missing',
+      enabled: !!merged.enabled,
       checks
     };
   }

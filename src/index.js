@@ -165,7 +165,8 @@ app.get('/api/status', (req, res) => {
 
 app.post('/api/test/seerr', async (req, res) => {
   try {
-    const result = await seerr.test();
+    const body = req.body || {};
+    const result = await seerr.test(body);
     res.json({ success: result.ok, ...result });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
