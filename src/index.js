@@ -163,6 +163,8 @@ app.post('/api/config', (req, res) => {
 
 app.get('/api/status', (req, res) => {
   res.json({
+    version: require('../package.json').version,
+    gitSha: (process.env.GIT_SHA || 'dev').slice(0, 7),
     whatsapp: bot.getStatus(),
     seerr: {
       enabled: seerr.isEnabled(),
@@ -246,6 +248,7 @@ app.listen(port, '0.0.0.0', () => {
     event: 'server-started',
     detail: debug.truncate({
       version: require('../package.json').version,
+      gitSha: (process.env.GIT_SHA || 'dev').slice(0, 7),
       dataDir: DATA_DIR,
       waEnabled: config.whatsapp && config.whatsapp.enabled,
       seerrUrl: config.seerr && config.seerr.url

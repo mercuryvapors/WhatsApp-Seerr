@@ -1,7 +1,11 @@
 # WhatsApp Seerr Bridge - Dockerfile
 FROM node:20-slim
 
-ENV NODE_ENV=production \
+# Existing local 'latest' tags are reused by 'up', so fingerprint builds
+# with the git SHA to make stale images obvious.
+ARG GIT_SHA=dev
+ENV GIT_SHA=$GIT_SHA \
+    NODE_ENV=production \
     PUPPETEER_SKIP_DOWNLOAD=false
 
 # Shared libraries and fonts needed by Puppeteer's Chrome.
