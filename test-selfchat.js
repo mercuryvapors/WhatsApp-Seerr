@@ -21,7 +21,8 @@ const bot = new WhatsAppBot(
   { whatsapp: { enabled: true, commandPrefix: '!', allowedNumbers: [], allowSelfMessages: true } },
   { onCommand: async (ctx) => { bot.gotCmd = ctx; } }
 );
-bot.selfNumber = '15551234567';
+bot.client = { info: { wid: { _serialized: '15551234567@c.us', user: '15551234567' }, pushname: 'Bob' } };
+bot.updateOwnIds();
 debug.clear();
 
 const run = (m) => bot.handleMessage(m);
@@ -59,6 +60,25 @@ const run = (m) => bot.handleMessage(m);
   await run(dup);
   await run(dup);
   console.log('6 dedup:           ', cmdCount === 1 ? 'processed once' : `processed ${cmdCount}x`);
+
+  // 7) Self-chat id resolved by poller differs from raw number digits
+  //    (message.to is the true self-chat id; ownIds contain it via _selfChatId)
+  bot.callbacks.onCommand = async () => { bot.gotCmd = 'resolved'; };
+  bot._seenMsgIds.clear();
+  bot._selfChatId = '12897001910@c.us';
+  bot.updateOwnIds();
+  await run(makeMsg({ id: { id: 'RESOLVED', fromMe: true, _serialized: 'RESOLVED' }, from: '12897001910@c.us', to: '12897001910@c.us' }));
+  console.log('7 resolved self:   ', bot.gotCmd === 'resolved' ? 'TRIGGERED' : 'not triggered');
+
+  // 8) ownIds must NOT swallow outgoing to a non-self contact
+  bot._seenMsgIds.clear();
+  bot._ownIds.clear();
+  bot._ownIds.add('12897001910@lid');
+  bot._ownIds.add('12897001910@c.us');
+  let triggered = false;
+  bot.callbacks.onCommand = async () => { triggered = true; };
+  await run(makeMsg({ id: { id: 'OUT2', fromMe: true, _serialized: 'OUT2' }, from: '15551234567@c.us', to: '14445550000@lid', selfNumber: '12897001910' }));
+  console.log('8 ownIds other-to: ', triggered ? 'WRONGLY TRIGGERED' : 'skipped');
 
   const fails = [];
   const all = debug.all();

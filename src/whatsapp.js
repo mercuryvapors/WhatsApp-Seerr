@@ -22,6 +22,7 @@ class WhatsAppBot {
     this._polling = false;
     this._selfChatId = null;
     this._pollerLogState = '';
+    this._ownIds = new Set();
   }
 
   getStatus() {
@@ -147,9 +148,9 @@ class WhatsAppBot {
       this.status = 'ready';
       let own = '';
       try {
-        own = (this.client.info && this.client.info.wid && (this.client.info.wid.user || '')) || '';
+        own = (this.client.info && this.client.info.wid && (this.client.info.wid._serialized || this.client.info.wid.user || '')) || '';
       } catch (_) {}
-      this.selfNumber = own.replace(/\D/g, '');
+      this.updateOwnIds();
       console.log('WhatsApp client is ready!' + (own ? ' (own number: ' + own + ')' : ''));
       debug.log({ dir: 'system', event: 'whatsapp-ready', detail: 'client is ready' + (own ? ' (own number: ' + own + ')' : '') });
       this.startSelfChatPoller();
@@ -209,6 +210,32 @@ class WhatsAppBot {
     return true;
   }
 
+  updateOwnIds() {
+    const ids = new Set();
+    const info = this.client && this.client.info;
+    if (info && info.wid) {
+      const wid = info.wid;
+      const serialized = wid._serialized || '';
+      if (serialized) ids.add(serialized);
+      const user = String(wid.user || '').replace(/\D/g, '');
+      if (user) {
+        this.selfNumber = user;
+        for (const suffix of ['@c.us', '@lid']) ids.add(user + suffix);
+      }
+    }
+    if (this._selfChatId) ids.add(this._selfChatId);
+    this._ownIds = ids;
+  }
+
+  isOwnId(value) {
+    const s = String(value || '');
+    if (!s) return false;
+    if (this._ownIds && this._ownIds.has(s)) return true;
+    const digits = s.replace(/[^\d@]/g, '');
+    const plain = s.split('@')[0].replace(/\D/g, '');
+    return !!(plain && plain === this.selfNumber);
+  }
+
   _num(message) {
     const from = message.from || '';
     const idx = from.indexOf('@');
@@ -243,6 +270,7 @@ class WhatsAppBot {
       try {
         const chat = await this.client.getChatById(serialized);
         this._selfChatId = chat.id._serialized;
+        this.updateOwnIds();
         return chat;
       } catch (_) {}
     }
@@ -255,10 +283,18 @@ class WhatsAppBot {
         try { contact = await c.getContact(); } catch (_) {}
         if (contact && contact.isMe) {
           this._selfChatId = c.id._serialized;
+          this.updateOwnIds();
+          return c;
+        }
+        const meLabel = this.client.info && (this.client.info.pushname || (this.client.info.me && this.client.info.me.pushname));
+        if (contact && meLabel && (contact.name || contact.shortName) === meLabel) {
+          this._selfChatId = c.id._serialized;
+          this.updateOwnIds();
           return c;
         }
         if (c.id && this._num({ from: c.id._serialized }) === this.selfNumber) {
           this._selfChatId = c.id._serialized;
+          this.updateOwnIds();
           return c;
         }
       }
@@ -346,18 +382,27 @@ class WhatsAppBot {
 
       const number = this._num(message);
       const toNum = this._num({ from: message.to });
-      const isSelfChat = !!isSelfChatHint || (message.fromMe && !!number && (toNum === number || (!toNum && number === this.selfNumber)));
+      const isSelfDest = this.isOwnId(message.to);
+      const isSelfChat =
+        !!isSelfChatHint ||
+        (message.fromMe &&
+          (isSelfDest ||
+            (!!number && toNum === number) ||
+            (!!number && !toNum && number === this.selfNumber)));
       const allowSelf = this.cfg.whatsapp.allowSelfMessages !== false;
 
       if (message.fromMe) {
         debug.log({
           dir: 'whatsapp-recv',
           number,
+          to: message.to || '',
           body: debug.truncate(message.body, 200),
           fromMe: true,
           toNum,
           selfNumber: this.selfNumber,
+          selfChatId: this._selfChatId || '',
           allowSelf,
+          isSelfDest,
           isSelfChat,
           reason: allowSelf && isSelfChat ? 'processing as self-test' : 'skipped: outgoing message not to self'
         });
