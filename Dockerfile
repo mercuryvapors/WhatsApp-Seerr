@@ -51,7 +51,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --production --no-audit --no-fund
+RUN npm ci --production --no-audit --no-fund \
+    && npm cache clean --force
 
 COPY src/ src/
 COPY public/ public/

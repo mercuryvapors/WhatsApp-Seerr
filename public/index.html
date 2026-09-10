@@ -25,14 +25,23 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background:
-        radial-gradient(1100px 520px at 12% -10%, rgba(37, 211, 102, 0.14), transparent 62%),
-        radial-gradient(1000px 560px at 115% 5%, rgba(100, 99, 199, 0.22), transparent 60%),
-        radial-gradient(900px 640px at 50% 115%, rgba(37, 211, 102, 0.10), transparent 60%),
-        var(--bg);
-      background-attachment: fixed;
+      background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+    }
+    .aurora {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(46vw 46vh at 22% 18%, rgba(37, 211, 102, 0.22), transparent 62%),
+        radial-gradient(42vw 46vh at 82% 24%, rgba(100, 99, 199, 0.34), transparent 62%),
+        radial-gradient(52vw 56vh at 55% 95%, rgba(45, 212, 191, 0.18), transparent 62%),
+        radial-gradient(36vw 40vh at 40% 115%, rgba(167, 139, 250, 0.14), transparent 60%);
+      background-size: 250% 250%, 250% 250%, 250% 250%, 250% 250%;
+      animation: auroraFlow 34s ease-in-out infinite alternate;
+      will-change: background-position;
     }
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -46,7 +55,7 @@
       background-color: rgba(37, 211, 102, 0.75);
       background-clip: content-box;
     }
-    .container { max-width: 1060px; margin: 0 auto; padding: 28px 24px 48px; }
+    .container { max-width: 1060px; margin: 0 auto; padding: 28px 24px 48px; position: relative; z-index: 1; }
     header {
       position: sticky;
       top: 10px;
@@ -419,6 +428,12 @@
     .diag-badge.ok { background: rgba(34,197,94,.15); color: var(--success); }
     .diag-badge.fail { background: rgba(239,68,68,.15); color: var(--danger); }
     .diag-badge.warn { background: rgba(245,158,11,.15); color: var(--warning); }
+    @keyframes auroraFlow {
+      0%   { background-position: 0% 0%, 100% 0%, 50% 100%, 40% 0%; }
+      33%  { background-position: 100% 0%, 40% 100%, 0% 60%, 100% 30%; }
+      66%  { background-position: 60% 100%, 0% 50%, 100% 0%, 0% 90%; }
+      100% { background-position: 0% 50%, 100% 100%, 20% 0%, 55% 100%; }
+    }
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
@@ -433,6 +448,7 @@
   </style>
 </head>
 <body>
+  <div class="aurora"></div>
   <div class="container">
     <header>
       <div class="logo">
