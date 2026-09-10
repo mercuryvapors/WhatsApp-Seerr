@@ -416,19 +416,6 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top: 20px;">
-        <h2><span class="emoji">🔗</span> Seerr–WhatsApp Pairing</h2>
-        <div class="hint">Pair an allowed WhatsApp number with a Seerr account. Requests from that number are made as that Seerr user, so their permissions (e.g. TV requests) and quotas apply. Unpaired numbers fall back to the Impersonate user, then the API key.</div>
-        <div id="seerrUsers"></div>
-        <div class="tag-input-row">
-          <input type="text" id="newUserNumber" placeholder="WhatsApp number, e.g. 15551234567" style="flex:1">
-          <input type="text" id="newUserEmail" placeholder="Seerr email" style="flex:1">
-          <input type="password" id="newUserPassword" placeholder="Password" autocomplete="new-password" style="flex:1">
-          <button class="btn secondary" onclick="addUserRow()">Pair</button>
-        </div>
-        <div class="hint">Credentials are stored in <code>config.json</code> on your server — keep it private.</div>
-      </div>
-
       <div class="card">
         <h2><span class="emoji">🎬</span> Seerr Settings</h2>
         <div class="switch-row">
@@ -540,7 +527,6 @@
         document.getElementById('srKey').value = config.seerr.apiKey || '';
         document.getElementById('srImpersonateEmail').value = (config.seerr.impersonate && config.seerr.impersonate.email) || '';
         document.getElementById('srImpersonatePassword').value = (config.seerr.impersonate && config.seerr.impersonate.password) || '';
-        renderSeerrUsers((config.seerr.users) || []);
         document.getElementById('appName').value = config.app.name || '';
         document.getElementById('serverPort').value = config.server.port || 7000;
         renderNumbers(config.whatsapp.allowedNumbers || []);
@@ -579,53 +565,6 @@
     function removeNumber(i) {
       config.whatsapp.allowedNumbers.splice(i, 1);
       renderNumbers(config.whatsapp.allowedNumbers);
-    }
-
-    function renderSeerrUsers(users) {
-      const container = document.getElementById('seerrUsers');
-      container.innerHTML = '';
-      if (!users || users.length === 0) {
-        container.innerHTML = '<div class="hint">No pairs yet — add a WhatsApp number and its Seerr account below.</div>';
-        return;
-      }
-      users.forEach((u, i) => {
-        const row = document.createElement('div');
-        row.className = 'tag-row';
-        row.innerHTML =
-          `<span class="pair-number">📱 <code>+${u.number}</code></span>` +
-          `<span class="pair-arrow">→</span>` +
-          `<span class="pair-email">👤 ${escHtml(u.email)}</span>` +
-          `<span class="pair-badge">Seerr</span>` +
-          `<span class="remove" onclick="removeUserRow(${i})" title="Unlink">×</span>`;
-        container.appendChild(row);
-      });
-    }
-
-    function addUserRow() {
-      const number = document.getElementById('newUserNumber').value.trim().replace(/\D/g, '');
-      const email = document.getElementById('newUserEmail').value.trim();
-      const password = document.getElementById('newUserPassword').value;
-      if (!number || !email || !password) {
-        toast('Fill in number, email and password', 'error');
-        return;
-      }
-      const users = config.seerr.users || [];
-      const existing = users.findIndex((u) => String(u.number || '').replace(/\D/g, '') === number);
-      if (existing >= 0) {
-        users[existing] = { number, email, password };
-      } else {
-        users.push({ number, email, password });
-      }
-      config.seerr.users = users;
-      document.getElementById('newUserNumber').value = '';
-      document.getElementById('newUserEmail').value = '';
-      document.getElementById('newUserPassword').value = '';
-      renderSeerrUsers(users);
-    }
-
-    function removeUserRow(i) {
-      config.seerr.users.splice(i, 1);
-      renderSeerrUsers(config.seerr.users);
     }
 
     async function saveConfig() {
