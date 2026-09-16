@@ -10,6 +10,7 @@ app.use(express.json());
 
 const PICK_WINDOW_MS = 5 * 60 * 1000;
 const pendingRequests = new Map(); // number -> { type, title, results, expiresAt }
+const pendingConfirmations = new Map(); // number -> { item, name, year, expiresAt }
 
 let config = loadConfig();
 const bot = new WhatsAppBot(config, {
@@ -60,7 +61,8 @@ function handleCommand({ cmd, args, reply, replyImage, number }) {
           `Available commands:\n` +
           `${prefix}request movie <title> - Search movies, pick one to request\n` +
           `${prefix}request tv <title> - Search TV shows, pick one to request\n` +
-          `${prefix}pick <number> - Confirm a match from the search results\n` +
+          `${prefix}pick <number> - Show cover art for a match\n` +
+          `${prefix}yes / ${prefix}no - Confirm or cancel the pending request\n` +
           `${prefix}test - Run a connection diagnostic\n` +
           `${prefix}help - Show this message`
       ), 'help');
@@ -68,6 +70,14 @@ function handleCommand({ cmd, args, reply, replyImage, number }) {
       return run(() => handleRequest(args, reply, number), 'request');
     case 'pick':
       return run(() => handlePick(number, args, reply, replyImage), 'pick');
+    case 'yes':
+    case 'y':
+    case 'confirm':
+      return run(() => handleConfirm(number, reply), 'confirm');
+    case 'no':
+    case 'n':
+    case 'cancel':
+      return run(() => handleCancel(number, reply), 'cancel');
     case 'test':
       return run(() => handleChatTest(reply), 'test');
     default:
@@ -79,6 +89,9 @@ function cleanupPending() {
   const now = Date.now();
   for (const [key, entry] of pendingRequests) {
     if (now > entry.expiresAt) pendingRequests.delete(key);
+  }
+  for (const [key, entry] of pendingConfirmations) {
+    if (now > entry.expiresAt) pendingConfirmations.delete(key);
   }
 }
 
@@ -100,7 +113,7 @@ function posterUrlFor(r) {
   if (!p || typeof p !== 'string') return null;
   if (/^https?:\/\//i.test(p)) return p;
   const path = p.startsWith('/') ? p : `/${p}`;
-  return `https://image.tmdb.org/t/p/w500${path}`;
+  return `https://image.tmdb.org/t/p/w342${path}`;
 }
 
 async function handleRequest(args, reply, number) {
@@ -140,6 +153,7 @@ async function handleRequest(args, reply, number) {
 
     cleanupPending();
     pendingRequests.set(number, { type: mediaType, title, results: items, expiresAt: Date.now() + PICK_WINDOW_MS });
+    pendingConfirmations.delete(number);
 
     const lines = [
       `Top ${items.length} ${mediaType === 'movie' ? 'movie' : 'TV'} match${items.length > 1 ? 'es' : ''} for "*${title}*":`,
@@ -157,6 +171,9 @@ async function handleRequest(args, reply, number) {
 
 async function handlePick(number, args, reply, replyImage) {
   cleanupPending();
+  if (pendingConfirmations.has(number)) {
+    return reply('You already have a pending request. Reply *!yes* to confirm it or *!no* to cancel first.');
+  }
   const entry = pendingRequests.get(number);
   if (!entry) {
     return reply('No pending search. Start with *!request movie <title>* or *!request tv <title>* first.');
@@ -170,6 +187,33 @@ async function handlePick(number, args, reply, replyImage) {
   const name = resultTitle(item);
   const year = resultYear(item);
   pendingRequests.delete(number);
+  pendingConfirmations.set(number, { item, name, year, expiresAt: Date.now() + PICK_WINDOW_MS });
+
+  const promptText = `${mediaIcon(item.mediaType)} *${name}* ${year}\n\nIs this correct? Reply *!yes* to request or *!no* to cancel.`.trim();
+  const posterUrl = posterUrlFor(item);
+  if (posterUrl && typeof replyImage === 'function') {
+    try {
+      return await replyImage(posterUrl, promptText);
+    } catch (e) {
+      console.warn('Cover-art send failed, falling back to text:', e.message);
+      debug.log({ dir: 'system', event: 'cover-art-failed', detail: e.message });
+    }
+  }
+  return reply(promptText);
+}
+
+async function handleConfirm(number, reply) {
+  cleanupPending();
+  const entry = pendingConfirmations.get(number);
+  if (!entry) {
+    return reply('No pending request to confirm. Start with *!request movie <title>* or *!request tv <title>* first.');
+  }
+  if (!seerr.isEnabled()) {
+    pendingConfirmations.delete(number);
+    return reply('Seerr is not configured or disabled. Please check the web UI.');
+  }
+  pendingConfirmations.delete(number);
+  const { item, name } = entry;
 
   try {
     const isTv = item.mediaType === 'tv';
@@ -177,20 +221,20 @@ async function handlePick(number, args, reply, replyImage) {
       ? { mediaType: 'tv', mediaId: item.tmdbId || item.id, tvdbId: item.id }
       : { mediaType: 'movie', mediaId: item.id };
     await seerr.submitRequest(payload, undefined, number);
-    const successText = `✅ Requested *${name}* ${year} successfully!`.trim();
-    const posterUrl = posterUrlFor(item);
-    if (posterUrl && typeof replyImage === 'function') {
-      try {
-        return await replyImage(posterUrl, successText);
-      } catch (e) {
-        console.warn('Cover-art send failed, falling back to text:', e.message);
-        debug.log({ dir: 'system', event: 'cover-art-failed', detail: e.message });
-      }
-    }
-    return reply(successText);
+    return reply(`✅ Requested *${name}* ${entry.year} successfully!`.trim());
   } catch (e) {
     return reply(`❌ Failed to request "${name}": ${e.message}`);
   }
+}
+
+async function handleCancel(number, reply) {
+  cleanupPending();
+  const entry = pendingConfirmations.get(number);
+  if (!entry) {
+    return reply('Nothing to cancel. Start with *!request movie <title>* or *!request tv <title>* first.');
+  }
+  pendingConfirmations.delete(number);
+  return reply('❎ Cancelled — nothing was requested.');
 }
 
 async function handleChatTest(reply) {

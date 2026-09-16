@@ -16,7 +16,8 @@ Bridge WhatsApp to Seerr (Overseerr / Jellyseerr) so users can request movies an
 |---------|--------|
 | `!request movie <title>` | Searches movies and lists the top 5 matches |
 | `!request tv <title>` | Searches TV shows and lists the top 5 matches |
-| `!pick <n>` | Requests match `n` from the search list (within 5 minutes) |
+| `!pick <n>` | Shows the cover art for match `n` and asks you to confirm (within 5 minutes) |
+| `!yes` / `!no` | Confirms or cancels the pending request |
 | `!help` | Shows available commands |
 
 Example:
@@ -24,8 +25,9 @@ Example:
 !request movie Dune
 !request tv Severance
 !pick 1
+!yes
 ```
-A media type (`movie` or `tv`) is required — the bot lists the top 5 matches and you confirm the right one with `!pick 1-5`.
+A media type (`movie` or `tv`) is required — the bot lists the top 5 matches, you pick one with `!pick 1-5`, then confirm the cover art with `!yes` (or `!no` to cancel).
 
 ## Setup
 
@@ -94,6 +96,7 @@ Send a message to the linked WhatsApp number:
 !request movie Dune
 !request tv Severance
 !pick 3
+!yes
 ```
 
 ## Unraid
