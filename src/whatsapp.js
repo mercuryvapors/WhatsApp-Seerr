@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const debug = require('./debug');
 
@@ -552,6 +552,16 @@ class WhatsAppBot {
             } catch (e) {
               console.warn('message.reply failed, falling back to sendMessage:', e.message);
               return this.client.sendMessage(message.from, textMessage);
+            }
+          },
+          replyImage: async (imageUrl, caption) => {
+            debug.log({ dir: 'whatsapp-reply', number, body: debug.truncate(`[image] ${imageUrl} | ${caption || ''}`, 200) });
+            const media = await MessageMedia.fromUrl(imageUrl, { unsafeMime: true });
+            try {
+              return await message.reply(media, undefined, { caption });
+            } catch (e) {
+              console.warn('message.reply(media) failed, falling back to sendMessage:', e.message);
+              return this.client.sendMessage(message.from, media, { caption });
             }
           }
         });

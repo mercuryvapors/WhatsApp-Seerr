@@ -21,7 +21,7 @@ const bot = new WhatsAppBot(config, {
 
 const seerr = new SeerrApi(config);
 
-function handleCommand({ cmd, args, reply, number }) {
+function handleCommand({ cmd, args, reply, replyImage, number }) {
   const prefix = config.whatsapp.commandPrefix || '!';
   debug.log({
     dir: 'system',
@@ -67,7 +67,7 @@ function handleCommand({ cmd, args, reply, number }) {
     case 'request':
       return run(() => handleRequest(args, reply, number), 'request');
     case 'pick':
-      return run(() => handlePick(number, args, reply), 'pick');
+      return run(() => handlePick(number, args, reply, replyImage), 'pick');
     case 'test':
       return run(() => handleChatTest(reply), 'test');
     default:
@@ -93,6 +93,14 @@ function resultTitle(r) {
 function resultYear(r) {
   const date = r.releaseDate || r.firstAirDate || r.airDate || '';
   return date ? `(${String(date).slice(0, 4)})` : '';
+}
+
+function posterUrlFor(r) {
+  const p = r && (r.posterPath || r.poster_path);
+  if (!p || typeof p !== 'string') return null;
+  if (/^https?:\/\//i.test(p)) return p;
+  const path = p.startsWith('/') ? p : `/${p}`;
+  return `https://image.tmdb.org/t/p/w500${path}`;
 }
 
 async function handleRequest(args, reply, number) {
@@ -147,7 +155,7 @@ async function handleRequest(args, reply, number) {
   }
 }
 
-async function handlePick(number, args, reply) {
+async function handlePick(number, args, reply, replyImage) {
   cleanupPending();
   const entry = pendingRequests.get(number);
   if (!entry) {
@@ -169,7 +177,17 @@ async function handlePick(number, args, reply) {
       ? { mediaType: 'tv', mediaId: item.tmdbId || item.id, tvdbId: item.id }
       : { mediaType: 'movie', mediaId: item.id };
     await seerr.submitRequest(payload, undefined, number);
-    return reply(`✅ Requested *${name}* ${year} successfully!`.trim());
+    const successText = `✅ Requested *${name}* ${year} successfully!`.trim();
+    const posterUrl = posterUrlFor(item);
+    if (posterUrl && typeof replyImage === 'function') {
+      try {
+        return await replyImage(posterUrl, successText);
+      } catch (e) {
+        console.warn('Cover-art send failed, falling back to text:', e.message);
+        debug.log({ dir: 'system', event: 'cover-art-failed', detail: e.message });
+      }
+    }
+    return reply(successText);
   } catch (e) {
     return reply(`❌ Failed to request "${name}": ${e.message}`);
   }
