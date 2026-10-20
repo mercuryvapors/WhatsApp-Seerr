@@ -146,9 +146,17 @@ you choose. This clears out stale WhatsApp Web sessions and reclaims memory.
 
 | Restart action | What it does |
 |----------------|--------------|
-| `Auto` | Container restart when running in Docker, otherwise reconnects the bot |
-| `Restart container` | Stops the WhatsApp client and restarts the container |
+| `Auto` | Container restart when running in Docker, otherwise an in-place refresh |
+| `Restart container` | Stops the WhatsApp client and restarts the container via the Docker API |
+| `Refresh in place` | Rebuilds the app **without stopping the container** — the web UI stays up |
 | `Reconnect bot only` | Keeps the process running and only re-creates the WhatsApp client |
+
+**`Refresh in place` is the option that refreshes the app without touching the
+container.** It restarts the WhatsApp client (which is where the memory and the
+stale sessions live), drops the cached Seerr logins and clears the debug log.
+The container is never stopped, so the web UI never goes down and you never have
+to stop and start the container yourself. Use it on Unraid if you would rather
+not grant the container access to the Docker socket.
 
 **How the container restart works.** The app asks the Docker daemon to restart the
 container directly. That works regardless of the container's restart policy, so the
@@ -163,17 +171,15 @@ volumes:
 On Unraid, add `/var/run/docker.sock` to the **Docker Socket** path in the template
 (Advanced View).
 
-> **Without the socket** the app falls back to exiting the process and relying on the
-> container's restart policy. That only works if the container runs with
-> `--restart unless-stopped` (or `always` / `on-failure`). If the policy is `no`, the
-> container stays stopped — the web UI shows the detected policy so you can check.
-
-The status line under the switch shows the container name and its restart policy, and
-whether the Docker socket is available.
+> **Without the socket** the app does **not** exit the process — exiting would
+> leave the container down if nothing restarts it. It falls back to an in-place
+> refresh instead and says so in the log. The status line under the switch shows
+> the detected container, its restart policy, and whether the Docker socket is
+> available.
 
 > Mounting the Docker socket grants the container control over the Docker daemon.
 > It is read-only here and only used to restart this one container, but weigh it
-> accordingly for your setup. Use **Reconnect bot only** if you would rather not
+> accordingly for your setup. Use **Refresh in place** if you would rather not
 > expose the socket.
 
 Notes:

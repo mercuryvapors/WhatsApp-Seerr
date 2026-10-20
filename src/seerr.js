@@ -71,6 +71,18 @@ class SeerrApi {
     return this.config.seerr || {};
   }
 
+  /**
+   * Drop all cached Seerr sessions so the next request logs in again.
+   * Used by the in-place refresh to clear stale auth state.
+   */
+  clearSessions() {
+    const count = this._sessions.size;
+    this._sessions.clear();
+    this._activeKey = null;
+    this._userEmail = null;
+    return count;
+  }
+
   userForNumber(effConfig, number) {
     const users = Array.isArray(effConfig.users) ? effConfig.users : [];
     const digits = String(number == null ? '' : number).replace(/\D/g, '');

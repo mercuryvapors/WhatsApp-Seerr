@@ -6,7 +6,7 @@ const docker = require('./docker');
 
 const TICK_MS = 30 * 1000;
 const DEFAULT_TIME = '04:00';
-const VALID_MODES = ['auto', 'container', 'bot'];
+const VALID_MODES = ['auto', 'container', 'bot', 'refresh'];
 
 /**
  * Parse an "HH:MM" string into a 24h clock time.
@@ -57,8 +57,10 @@ function localTimezone() {
  *  - 'container': restart the container through the Docker API. When the Docker
  *    socket is not mounted, fall back to exiting the process and rely on the
  *    container's restart policy.
+ *  - 'refresh':   rebuild the app in place — the container keeps running, the
+ *    web UI and Seerr connection stay up, only the WhatsApp client is redone.
  *  - 'bot':       keep the process alive and only re-create the WhatsApp client.
- *  - 'auto':      'container' when running in Docker, otherwise 'bot'.
+ *  - 'auto':      'container' when running in Docker, otherwise 'refresh'.
  */
 class AutoRestarter {
   constructor(opts = {}) {
@@ -86,7 +88,7 @@ class AutoRestarter {
       enabled: !!ar.enabled,
       time,
       mode: rawMode,
-      resolvedMode: rawMode === 'auto' ? (isContainer() ? 'container' : 'bot') : rawMode
+      resolvedMode: rawMode === 'auto' ? (isContainer() ? 'container' : 'refresh') : rawMode
     };
   }
 
@@ -156,8 +158,8 @@ class AutoRestarter {
    * In 'container' mode we ask the Docker daemon to restart the container
    * directly. That is reliable regardless of the restart policy and it also
    * works when the container is not managed by a policy at all. If the socket
-   * is unavailable we fall back to exiting the process, which only comes back
-   * if the container has a restart policy such as 'unless-stopped'.
+   * is unavailable we fall back to an in-place refresh, and only exit the
+   * process when a restart policy is actually going to bring it back.
    */
   async trigger(reason) {
     const s = this.settings();
@@ -174,7 +176,7 @@ class AutoRestarter {
         console.error(`[restart] Docker API restart failed: ${msg}`);
         debug.log({ dir: 'system', event: 'auto-restart-error', detail: `docker restart failed: ${msg}` });
         this.lastError = msg;
-        // Fall through to the exit-based fallback below.
+        // Fall through to the fallback below.
       }
     }
 

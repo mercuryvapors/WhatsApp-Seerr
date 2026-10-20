@@ -28,7 +28,10 @@ const seerr = new SeerrApi(config);
  * Daily auto-restart.
  *  - mode 'container': ask the Docker daemon to restart the container. Works
  *    regardless of the container's restart policy. If the Docker socket is not
- *    mounted, fall back to exiting the process and relying on the policy.
+ *    mounted, fall back to an in-place refresh — never to a bare exit, since
+ *    nothing would bring the container back up.
+ *  - mode 'refresh':   rebuild the app in place; the container keeps running
+ *    and the web UI stays reachable.
  *  - mode 'bot':       keep the process alive, just re-create the WhatsApp client.
  */
 const restarter = new AutoRestarter({
@@ -46,37 +49,66 @@ const restarter = new AutoRestarter({
     console.log('[restart] container restart issued');
   },
   onRestart: async (reason, settings) => {
-    try {
-      await bot.stop();
-    } catch (e) {
-      console.warn('Error stopping WhatsApp client before restart:', e.message);
-    }
-    if (settings.resolvedMode === 'bot') {
-      if (config.whatsapp && config.whatsapp.enabled) {
-        await bot.start();
-        debug.log({ dir: 'system', event: 'auto-restart', detail: 'WhatsApp client restarted in place' });
-      } else {
-        debug.log({ dir: 'system', event: 'auto-restart', detail: 'WhatsApp bot disabled — nothing to reconnect' });
-      }
+    if (settings.resolvedMode === 'bot' || settings.resolvedMode === 'refresh') {
+      await refreshInPlace(reason);
       return;
     }
-    // No Docker socket: exit and let the restart policy bring us back.
-    // Exit non-zero so that 'on-failure' policies also trigger a restart
-    // ('always' / 'unless-stopped' restart on any exit code).
+
+    // Container mode, but the Docker API is not reachable. Exiting the process
+    // is only safe when a restart policy is actually going to bring the
+    // container back. Otherwise the app would simply stay down.
     const policy = (restarter.container && restarter.container.restartPolicy) || 'unknown';
     const willRestart = policy === 'always' || policy === 'unless-stopped' || policy === 'on-failure';
-    console.log(
-      `[restart] exiting process (container restart policy: ${policy}` +
-        (willRestart ? ' — the container will come back up)' : ' — this policy will NOT restart the container)')
-    );
+
+    if (!willRestart) {
+      console.warn(
+        `[restart] Docker API unavailable and restart policy is "${policy}" — ` +
+          'refreshing in place instead of exiting, otherwise the container would stay down'
+      );
+      debug.log({
+        dir: 'system',
+        event: 'auto-restart',
+        detail: `docker API unavailable, policy "${policy}" — falling back to in-place refresh`
+      });
+      await refreshInPlace(reason);
+      return;
+    }
+
+    // Exit and let the restart policy bring us back.
+    // Exit non-zero so that 'on-failure' policies also trigger a restart
+    // ('always' / 'unless-stopped' restart on any exit code).
+    console.log(`[restart] exiting process (container restart policy: ${policy} — the container will come back up)`);
     debug.log({
       dir: 'system',
       event: 'auto-restart',
       detail: `exiting process; relies on restart policy "${policy}"`
     });
-    setTimeout(() => process.exit(willRestart ? 1 : 0), 1000);
+    setTimeout(() => process.exit(1), 1000);
   }
 });
+
+/**
+ * Rebuild the running app without touching the container: restart the
+ * WhatsApp client, drop cached Seerr sessions and clear the debug log.
+ * The HTTP server and the web UI stay up throughout.
+ */
+async function refreshInPlace(reason) {
+  const wasEnabled = !!(config.whatsapp && config.whatsapp.enabled);
+  const cleared = seerr.clearSessions();
+  debug.log({
+    dir: 'system',
+    event: 'auto-restart',
+    detail: `in-place refresh (${reason}) — cleared ${cleared} Seerr session(s)`
+  });
+  console.log(`[restart] in-place refresh (${reason})`);
+
+  if (!wasEnabled) {
+    debug.log({ dir: 'system', event: 'auto-restart', detail: 'WhatsApp bot disabled — only Seerr sessions were cleared' });
+    return;
+  }
+  const status = await bot.refresh();
+  console.log(`[restart] WhatsApp client refreshed (status: ${status.status})`);
+}
 
 function handleCommand({ cmd, args, reply, replyImage, number }) {
   const prefix = config.whatsapp.commandPrefix || '!';
@@ -389,7 +421,7 @@ app.post('/api/config', (req, res) => {
         ...ar,
         enabled: !!ar.enabled,
         time: parseTime(ar.time) ? String(ar.time).trim() : (config.server.autoRestart || {}).time || '04:00',
-        mode: ['auto', 'container', 'bot'].includes(ar.mode) ? ar.mode : 'auto'
+        mode: ['auto', 'container', 'bot', 'refresh'].includes(ar.mode) ? ar.mode : 'auto'
       };
     }
     const merged = {

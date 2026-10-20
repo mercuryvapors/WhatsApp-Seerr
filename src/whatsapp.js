@@ -188,6 +188,26 @@ class WhatsAppBot {
     this.status = 'stopped';
   }
 
+  /**
+   * Restart the WhatsApp client in place, without tearing down the process.
+   * The web UI and the Seerr connection stay up; only the browser session is
+   * rebuilt. Used by the "Refresh in place" restart action.
+   */
+  async refresh() {
+    if (!this.cfg.whatsapp || !this.cfg.whatsapp.enabled) {
+      throw new Error('WhatsApp bot is disabled — nothing to refresh');
+    }
+    await this.stop();
+    // The old Chromium profile leaves a lock behind; clear it so the new
+    // browser starts cleanly.
+    this.clearStaleProfileLocks();
+    await this.start();
+    if (this.status === 'error') {
+      throw new Error(this.lastError || 'WhatsApp client failed to restart');
+    }
+    return this.getStatus();
+  }
+
   stopSelfChatPoller() {
     if (this._poller) {
       clearInterval(this._poller);

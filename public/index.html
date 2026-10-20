@@ -595,11 +595,17 @@
           <select id="autoRestartMode">
             <option value="auto">Auto (container restart in Docker)</option>
             <option value="container">Restart container</option>
+            <option value="refresh">Refresh in place (container keeps running)</option>
             <option value="bot">Reconnect bot only</option>
           </select>
         </div>
       </div>
       <div class="hint" id="autoRestartHint">—</div>
+      <div class="hint">
+        <b>Refresh in place</b> rebuilds the app without stopping the container: the web UI stays
+        reachable and the WhatsApp client is reconnected. <b>Restart container</b> restarts the whole
+        container through the Docker API and needs the Docker socket mounted.
+      </div>
 
       <div class="btn-row">
         <button class="btn outline" id="restartNowBtn" onclick="restartNow()">⟳ Restart now</button>
@@ -911,8 +917,10 @@
         const hint = document.getElementById('autoRestartHint');
         if (hint) {
           const modeText = ar.resolvedMode === 'bot'
-            ? 'Reconnect bot only (process stays up)'
-            : 'Restart container';
+            ? 'Reconnect bot only'
+            : ar.resolvedMode === 'refresh'
+              ? 'Refresh in place (container keeps running)'
+              : 'Restart container';
           let text = modeText + ' · timezone: ' + (ar.timezone || 'unknown');
           if (ar.enabled && ar.nextRestart) {
             text += ' · next restart: ' + new Date(ar.nextRestart).toLocaleString();
@@ -928,7 +936,7 @@
               text += ' (policy: ' + dk.restartPolicy + (dk.restartPolicy === 'no' ? ' — will not auto-start' : '') + ')';
             }
           } else {
-            text += ' · Docker socket not mounted — falls back to the container restart policy';
+            text += ' · Docker socket not mounted — container restart will fall back to an in-place refresh';
           }
           if (ar.error) text += ' · ⚠️ ' + ar.error;
           hint.textContent = text;
@@ -938,15 +946,27 @@
 
     async function restartNow() {
       const btn = document.getElementById('restartNowBtn');
-      const resolved = (lastStatus && lastStatus.autoRestart && lastStatus.autoRestart.resolvedMode) || 'bot';
-      const msg = (resolved === 'bot')
-        ? 'Restart the bot now? The WhatsApp client will reconnect.'
-        : 'Restart now? The container will be restarted by Docker.';
+      const resolved = (lastStatus && lastStatus.autoRestart && lastStatus.autoRestart.resolvedMode) || 'refresh';
+      let msg;
+      if (resolved === 'bot' || resolved === 'refresh') {
+        msg = 'Refresh now? The WhatsApp client is reconnected and the container keeps running.';
+      } else {
+        msg = 'Restart now? The container will be restarted by Docker.';
+      }
       if (!window.confirm(msg)) return;
       btn.disabled = true;
       try {
         const r = await fetchJSON('/api/restart/now', { method: 'POST' });
         toast('Restarting (' + (r.mode || 'auto') + ')…', 'info');
+        if (resolved === 'bot' || resolved === 'refresh') {
+          // In-place refresh: the app stays up, so just refresh the status.
+          setTimeout(() => {
+            refreshStatus();
+            btn.disabled = false;
+            toast('Refreshed', 'success');
+          }, 4000);
+          return;
+        }
       } catch (e) {
         // The container is torn down while the request is in flight, so the
         // connection dropping here is expected, not a failure.
