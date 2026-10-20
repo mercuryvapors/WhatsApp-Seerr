@@ -147,12 +147,34 @@ you choose. This clears out stale WhatsApp Web sessions and reclaims memory.
 | Restart action | What it does |
 |----------------|--------------|
 | `Auto` | Container restart when running in Docker, otherwise reconnects the bot |
-| `Restart container` | Stops the WhatsApp client and exits the process — Docker restarts the container |
+| `Restart container` | Stops the WhatsApp client and restarts the container |
 | `Reconnect bot only` | Keeps the process running and only re-creates the WhatsApp client |
 
-> **Container restart requires a restart policy.** The shipped `docker-compose.yml`
-> and Unraid template already set `--restart unless-stopped`. Without one, a
-> container restart leaves the bridge down until you start it again.
+**How the container restart works.** The app asks the Docker daemon to restart the
+container directly. That works regardless of the container's restart policy, so the
+container always comes back up. To enable it, mount the Docker socket:
+
+```yaml
+volumes:
+  - ./data:/data
+  - /var/run/docker.sock:/var/run/docker.sock:ro
+```
+
+On Unraid, add `/var/run/docker.sock` to the **Docker Socket** path in the template
+(Advanced View).
+
+> **Without the socket** the app falls back to exiting the process and relying on the
+> container's restart policy. That only works if the container runs with
+> `--restart unless-stopped` (or `always` / `on-failure`). If the policy is `no`, the
+> container stays stopped — the web UI shows the detected policy so you can check.
+
+The status line under the switch shows the container name and its restart policy, and
+whether the Docker socket is available.
+
+> Mounting the Docker socket grants the container control over the Docker daemon.
+> It is read-only here and only used to restart this one container, but weigh it
+> accordingly for your setup. Use **Reconnect bot only** if you would rather not
+> expose the socket.
 
 Notes:
 
@@ -178,8 +200,8 @@ Notes:
 - The first container start downloads/provisions nothing; Chromium ships with the image.
 - Keep the `/data` volume mapped — it stores your WhatsApp session and config.
 - Only phone numbers in **Allowed Phone Numbers** can use the bot. Empty = everyone allowed.
-- The daily auto-restart exits the process in "Restart container" mode — always run the
-  container with a restart policy (`--restart unless-stopped`).
+- The daily auto-restart uses the Docker API when the Docker socket is mounted; without
+  it, the app exits the process and relies on the container's restart policy.
 
 ## Disclaimer
 

@@ -20,6 +20,7 @@
   <Config Name="PORT" Target="PORT" Default="7000" Mode="" Description="" Type="Variable" Display="always" Required="false" Mask="false" />
   <Port Name="Port 7000" HostPort="7000" ContainerPort="7000" Protocol="tcp" Mode="bridge" Description="" Display="always" />
   <Volume Name="./data" Default="./data" Required="true" Target="/data" Mode="rw" Description="" Type="Path" Display="always" Mask="false" />
+  <Volume Name="/var/run/docker.sock" Default="/var/run/docker.sock" Required="false" Target="/var/run/docker.sock" Mode="ro" Description="Lets the app restart its own container (General Settings -&gt; Auto-restart). Optional." Type="Path" Display="advanced" Mask="false" />
   <ExtraParams>--restart unless-stopped --add-host host.docker.internal:host-gateway --shm-size 1gb</ExtraParams>
   <Labels />
   <Environment />

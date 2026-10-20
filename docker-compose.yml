@@ -19,6 +19,10 @@ services:
     shm_size: 1gb
     volumes:
       - ./data:/data
+      # Lets the app ask Docker to restart this container (General Settings ->
+      # Auto-restart). Without it, the restart falls back to exiting the
+      # process, which only comes back if the restart policy is set.
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - DATA_DIR=/data
       - PUPPETEER_SKIP_DOWNLOAD=false

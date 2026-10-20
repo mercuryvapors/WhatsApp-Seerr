@@ -912,7 +912,7 @@
         if (hint) {
           const modeText = ar.resolvedMode === 'bot'
             ? 'Reconnect bot only (process stays up)'
-            : 'Restart container (process exits, Docker restarts it)';
+            : 'Restart container';
           let text = modeText + ' · timezone: ' + (ar.timezone || 'unknown');
           if (ar.enabled && ar.nextRestart) {
             text += ' · next restart: ' + new Date(ar.nextRestart).toLocaleString();
@@ -920,6 +920,15 @@
             text += ' · next restart: not scheduled';
           } else {
             text += ' · disabled';
+          }
+          const dk = ar.docker || {};
+          if (dk.socket) {
+            text += ' · Docker API: ' + (dk.container ? dk.container : 'connected');
+            if (dk.restartPolicy) {
+              text += ' (policy: ' + dk.restartPolicy + (dk.restartPolicy === 'no' ? ' — will not auto-start' : '') + ')';
+            }
+          } else {
+            text += ' · Docker socket not mounted — falls back to the container restart policy';
           }
           if (ar.error) text += ' · ⚠️ ' + ar.error;
           hint.textContent = text;
@@ -932,17 +941,33 @@
       const resolved = (lastStatus && lastStatus.autoRestart && lastStatus.autoRestart.resolvedMode) || 'bot';
       const msg = (resolved === 'bot')
         ? 'Restart the bot now? The WhatsApp client will reconnect.'
-        : 'Restart now? The container will exit and be restarted by Docker (needs a restart policy).';
+        : 'Restart now? The container will be restarted by Docker.';
       if (!window.confirm(msg)) return;
       btn.disabled = true;
       try {
         const r = await fetchJSON('/api/restart/now', { method: 'POST' });
         toast('Restarting (' + (r.mode || 'auto') + ')…', 'info');
-        // The process may go away mid-request; keep polling to show when it is back.
-        setTimeout(() => window.location.reload(), 5000);
       } catch (e) {
-        toast('Restart failed: ' + e.message, 'error');
-        btn.disabled = false;
+        // The container is torn down while the request is in flight, so the
+        // connection dropping here is expected, not a failure.
+        toast('Restarting…', 'info');
+      }
+      // Poll until the app answers again, then reload.
+      setTimeout(() => waitForBack(0), 1500);
+    }
+
+    async function waitForBack(attempt) {
+      if (attempt > 60) {
+        document.getElementById('restartNowBtn').disabled = false;
+        toast('The app did not come back within 90s — check the container logs', 'error');
+        return;
+      }
+      try {
+        await fetchJSON('/api/status');
+        window.location.reload();
+        return;
+      } catch (e) {
+        setTimeout(() => waitForBack(attempt + 1), 1500);
       }
     }
 

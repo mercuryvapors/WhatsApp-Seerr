@@ -4,6 +4,7 @@ const { loadConfig, saveConfig, DATA_DIR } = require('./config');
 const WhatsAppBot = require('./whatsapp');
 const SeerrApi = require('./seerr');
 const { AutoRestarter, parseTime } = require('./restart');
+const docker = require('./docker');
 const debug = require('./debug');
 
 const app = express();
@@ -25,12 +26,25 @@ const seerr = new SeerrApi(config);
 
 /**
  * Daily auto-restart.
- *  - mode 'container': tear down the WhatsApp client and exit the process so the
- *    container runtime's restart policy brings the container back up fresh.
+ *  - mode 'container': ask the Docker daemon to restart the container. Works
+ *    regardless of the container's restart policy. If the Docker socket is not
+ *    mounted, fall back to exiting the process and relying on the policy.
  *  - mode 'bot':       keep the process alive, just re-create the WhatsApp client.
  */
 const restarter = new AutoRestarter({
   getConfig: () => config,
+  onContainerRestart: async (reason) => {
+    // Tear the bot down first so Chromium closes cleanly and the next start
+    // does not trip over a stale profile lock.
+    try {
+      await bot.stop();
+    } catch (e) {
+      console.warn('Error stopping WhatsApp client before restart:', e.message);
+    }
+    await docker.restartContainer(30);
+    // The daemon tears us down mid-call; this is only reached if it did not.
+    console.log('[restart] container restart issued');
+  },
   onRestart: async (reason, settings) => {
     try {
       await bot.stop();
@@ -46,9 +60,21 @@ const restarter = new AutoRestarter({
       }
       return;
     }
-    // Let the browser close cleanly before the process goes away, so the next
-    // start does not trip over a stale Chromium profile lock.
-    setTimeout(() => process.exit(0), 1000);
+    // No Docker socket: exit and let the restart policy bring us back.
+    // Exit non-zero so that 'on-failure' policies also trigger a restart
+    // ('always' / 'unless-stopped' restart on any exit code).
+    const policy = (restarter.container && restarter.container.restartPolicy) || 'unknown';
+    const willRestart = policy === 'always' || policy === 'unless-stopped' || policy === 'on-failure';
+    console.log(
+      `[restart] exiting process (container restart policy: ${policy}` +
+        (willRestart ? ' — the container will come back up)' : ' — this policy will NOT restart the container)')
+    );
+    debug.log({
+      dir: 'system',
+      event: 'auto-restart',
+      detail: `exiting process; relies on restart policy "${policy}"`
+    });
+    setTimeout(() => process.exit(willRestart ? 1 : 0), 1000);
   }
 });
 
@@ -396,6 +422,8 @@ app.post('/api/config', (req, res) => {
 });
 
 app.get('/api/status', (req, res) => {
+  // Keep the container/policy info fresh for the UI.
+  restarter.refreshContainerInfo();
   res.json({
     version: require('../package.json').version,
     gitSha: (process.env.GIT_SHA || 'dev').slice(0, 7),

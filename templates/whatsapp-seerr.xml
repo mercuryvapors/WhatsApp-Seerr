@@ -21,6 +21,7 @@
   <License>MIT</License>
   <Config Name="Web UI Port" Target="7000" Default="7000" Mode="tcp" Description="Web UI port. Add --shm-size=1gb to Extra Parameters if the container crashes." Type="Port" Display="always" Required="true" Mask="false">7000</Config>
   <Config Name="Data Path" Target="/data" Default="/mnt/user/appdata/whatsapp-seerr" Mode="rw" Description="Config, session and QR data - keep persistent" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/whatsapp-seerr</Config>
+  <Config Name="Docker Socket" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="ro" Description="Lets the app restart its own container (General Settings -&gt; Auto-restart). Optional." Type="Path" Display="advanced" Required="false" Mask="false">/var/run/docker.sock</Config>
   <Config Name="PORT" Target="PORT" Default="7000" Mode="" Description="Internal HTTP port (matches Web UI Port)" Type="Variable" Display="advanced" Required="false" Mask="false">7000</Config>
   <Config Name="TZ" Target="TZ" Default="" Mode="" Description="Timezone for the daily auto-restart schedule (e.g. Europe/Amsterdam)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <ExtraParams>--restart unless-stopped --add-host host.docker.internal:host-gateway --shm-size=1gb</ExtraParams>

@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const debug = require('./debug');
+const docker = require('./docker');
 
 const TICK_MS = 30 * 1000;
 const DEFAULT_TIME = '04:00';
@@ -35,7 +36,7 @@ function nextOccurrence(hour, minute, from) {
 
 function isContainer() {
   try {
-    return fs.existsSync('/.dockerenv');
+    return fs.existsSync('/.dockerenv') || fs.existsSync('/run/.containerenv');
   } catch (e) {
     return false;
   }
@@ -53,8 +54,9 @@ function localTimezone() {
  * Schedules a daily restart of the bridge.
  *
  * Modes:
- *  - 'container': stop the WhatsApp client and exit the process. The container
- *    runtime's restart policy (--restart unless-stopped) brings it back up.
+ *  - 'container': restart the container through the Docker API. When the Docker
+ *    socket is not mounted, fall back to exiting the process and rely on the
+ *    container's restart policy.
  *  - 'bot':       keep the process alive and only re-create the WhatsApp client.
  *  - 'auto':      'container' when running in Docker, otherwise 'bot'.
  */
@@ -62,10 +64,12 @@ class AutoRestarter {
   constructor(opts = {}) {
     this.getConfig = opts.getConfig || (() => ({}));
     this.onRestart = opts.onRestart || (async () => {});
+    this.onContainerRestart = opts.onContainerRestart || (async () => {});
     this.interval = null;
     this.next = null;
     this.lastRestart = null;
     this.lastError = null;
+    this.container = null; // cached Docker container info
   }
 
   settings() {
@@ -91,6 +95,8 @@ class AutoRestarter {
     this.interval = setInterval(() => this.tick(), TICK_MS);
     if (this.interval.unref) this.interval.unref();
     this.apply();
+    // Look up the container in the background so the UI can show the policy.
+    this.refreshContainerInfo();
   }
 
   stop() {
@@ -124,18 +130,54 @@ class AutoRestarter {
     });
   }
 
+  async refreshContainerInfo() {
+    try {
+      this.container = await docker.detectContainer();
+    } catch (e) {
+      this.container = { available: false, reason: e.message };
+    }
+    return this.container;
+  }
+
   tick() {
+    // Refresh the container/policy info occasionally so the UI stays current.
+    this._ticks = (this._ticks || 0) + 1;
+    if (this._ticks % 10 === 0) this.refreshContainerInfo();
+
     if (!this.next) return;
     if (Date.now() < this.next.getTime()) return;
     this.next = null;
     this.trigger('scheduled');
   }
 
+  /**
+   * Perform the restart.
+   *
+   * In 'container' mode we ask the Docker daemon to restart the container
+   * directly. That is reliable regardless of the restart policy and it also
+   * works when the container is not managed by a policy at all. If the socket
+   * is unavailable we fall back to exiting the process, which only comes back
+   * if the container has a restart policy such as 'unless-stopped'.
+   */
   async trigger(reason) {
     const s = this.settings();
     this.lastRestart = new Date().toISOString();
     debug.log({ dir: 'system', event: 'auto-restart', detail: `restart (${reason}) mode=${s.resolvedMode}` });
     console.log(`[restart] ${reason} restart requested (mode: ${s.resolvedMode})`);
+
+    if (s.resolvedMode === 'container') {
+      try {
+        await this.onContainerRestart(reason, s);
+        return;
+      } catch (e) {
+        const msg = e && e.message ? e.message : String(e);
+        console.error(`[restart] Docker API restart failed: ${msg}`);
+        debug.log({ dir: 'system', event: 'auto-restart-error', detail: `docker restart failed: ${msg}` });
+        this.lastError = msg;
+        // Fall through to the exit-based fallback below.
+      }
+    }
+
     try {
       await this.onRestart(reason, s);
     } catch (e) {
@@ -150,6 +192,7 @@ class AutoRestarter {
 
   status() {
     const s = this.settings();
+    const c = this.container || {};
     return {
       enabled: s.enabled,
       time: s.time,
@@ -159,9 +202,23 @@ class AutoRestarter {
       nextRestart: this.next ? this.next.toISOString() : null,
       lastRestart: this.lastRestart,
       error: this.lastError,
-      inContainer: isContainer()
+      inContainer: isContainer(),
+      docker: {
+        socket: docker.hasSocket(),
+        container: c.name || null,
+        restartPolicy: c.restartPolicy || null,
+        reason: c.reason || ''
+      }
     };
   }
 }
 
-module.exports = { AutoRestarter, parseTime, nextOccurrence, isContainer, localTimezone, DEFAULT_TIME, TICK_MS };
+module.exports = {
+  AutoRestarter,
+  parseTime,
+  nextOccurrence,
+  isContainer,
+  localTimezone,
+  DEFAULT_TIME,
+  TICK_MS
+};
