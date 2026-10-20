@@ -162,7 +162,7 @@
       margin-bottom: 6px;
       margin-top: 14px;
     }
-    input[type="text"], input[type="password"], input[type="number"], select {
+    input[type="text"], input[type="password"], input[type="number"], input[type="time"], select {
       width: 100%;
       padding: 10px 12px;
       background: rgba(15, 18, 24, 0.6);
@@ -569,6 +569,41 @@
           <input type="number" id="serverPort" placeholder="7000">
         </div>
       </div>
+
+      <div class="section-divider"></div>
+
+      <div class="switch-row">
+        <div class="switch-label">Auto-restart daily</div>
+        <label class="switch">
+          <input type="checkbox" id="autoRestartEnabled">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="hint">
+        Restarts the bridge every day at the time below — clears stale WhatsApp sessions
+        and reclaims memory. A missed slot is not caught up on, so the container never
+        restarts in a loop.
+      </div>
+
+      <div class="grid">
+        <div>
+          <label for="autoRestartTime">Restart time</label>
+          <input type="time" id="autoRestartTime" value="04:00">
+        </div>
+        <div>
+          <label for="autoRestartMode">Restart action</label>
+          <select id="autoRestartMode">
+            <option value="auto">Auto (container restart in Docker)</option>
+            <option value="container">Restart container</option>
+            <option value="bot">Reconnect bot only</option>
+          </select>
+        </div>
+      </div>
+      <div class="hint" id="autoRestartHint">—</div>
+
+      <div class="btn-row">
+        <button class="btn outline" id="restartNowBtn" onclick="restartNow()">⟳ Restart now</button>
+      </div>
     </div>
 
     <button class="btn primary" id="saveBtn" onclick="saveConfig()">💾 Save &amp; Apply</button>
@@ -601,6 +636,7 @@
   <script>
     let config = {};
     let statusTimer = null;
+    let lastStatus = null;
 
     function toast(msg, type='info') {
       const t = document.getElementById('toast');
@@ -631,6 +667,10 @@
         document.getElementById('srImpersonatePassword').value = (config.seerr.impersonate && config.seerr.impersonate.password) || '';
         document.getElementById('appName').value = config.app.name || '';
         document.getElementById('serverPort').value = config.server.port || 7000;
+        const ar = (config.server && config.server.autoRestart) || {};
+        document.getElementById('autoRestartEnabled').checked = !!ar.enabled;
+        document.getElementById('autoRestartTime').value = ar.time || '04:00';
+        document.getElementById('autoRestartMode').value = ar.mode || 'auto';
         renderNumbers(config.whatsapp.allowedNumbers || []);
       } catch (e) {
         toast('Failed to load config: ' + e.message, 'error');
@@ -669,6 +709,14 @@
       renderNumbers(config.whatsapp.allowedNumbers);
     }
 
+    function autoRestartPayload() {
+      return {
+        enabled: document.getElementById('autoRestartEnabled').checked,
+        time: document.getElementById('autoRestartTime').value || '04:00',
+        mode: document.getElementById('autoRestartMode').value || 'auto'
+      };
+    }
+
     async function saveConfig() {
       const payload = {
         whatsapp: {
@@ -691,7 +739,8 @@
           name: document.getElementById('appName').value || 'WhatsApp Seerr Bridge'
         },
         server: {
-          port: parseInt(document.getElementById('serverPort').value) || 7000
+          port: parseInt(document.getElementById('serverPort').value) || 7000,
+          autoRestart: autoRestartPayload()
         }
       };
       try {
@@ -752,7 +801,10 @@
           users: (config.seerr.users) || []
         },
         app: { name: document.getElementById('appName').value || 'WhatsApp Seerr Bridge' },
-        server: { port: parseInt(document.getElementById('serverPort').value) || 7000 }
+        server: {
+          port: parseInt(document.getElementById('serverPort').value) || 7000,
+          autoRestart: autoRestartPayload()
+        }
       };
       await fetchJSON('/api/config', {
         method: 'POST',
@@ -808,6 +860,7 @@
     async function refreshStatus() {
       try {
         const status = await fetchJSON('/api/status');
+        lastStatus = status;
         const wa = status.whatsapp;
         const se = status.seerr;
 
@@ -853,7 +906,44 @@
         document.getElementById('seerrStatusText').title =
           (se.impersonateConfigured ? 'impersonate: configured\n' : '') +
           'per-user accounts: ' + (userAccounts.length ? userAccounts.join(', ') : 'none');
+
+        const ar = status.autoRestart || {};
+        const hint = document.getElementById('autoRestartHint');
+        if (hint) {
+          const modeText = ar.resolvedMode === 'bot'
+            ? 'Reconnect bot only (process stays up)'
+            : 'Restart container (process exits, Docker restarts it)';
+          let text = modeText + ' · timezone: ' + (ar.timezone || 'unknown');
+          if (ar.enabled && ar.nextRestart) {
+            text += ' · next restart: ' + new Date(ar.nextRestart).toLocaleString();
+          } else if (ar.enabled) {
+            text += ' · next restart: not scheduled';
+          } else {
+            text += ' · disabled';
+          }
+          if (ar.error) text += ' · ⚠️ ' + ar.error;
+          hint.textContent = text;
+        }
       } catch (e) { }
+    }
+
+    async function restartNow() {
+      const btn = document.getElementById('restartNowBtn');
+      const resolved = (lastStatus && lastStatus.autoRestart && lastStatus.autoRestart.resolvedMode) || 'bot';
+      const msg = (resolved === 'bot')
+        ? 'Restart the bot now? The WhatsApp client will reconnect.'
+        : 'Restart now? The container will exit and be restarted by Docker (needs a restart policy).';
+      if (!window.confirm(msg)) return;
+      btn.disabled = true;
+      try {
+        const r = await fetchJSON('/api/restart/now', { method: 'POST' });
+        toast('Restarting (' + (r.mode || 'auto') + ')…', 'info');
+        // The process may go away mid-request; keep polling to show when it is back.
+        setTimeout(() => window.location.reload(), 5000);
+      } catch (e) {
+        toast('Restart failed: ' + e.message, 'error');
+        btn.disabled = false;
+      }
     }
 
     async function testSeerr() {

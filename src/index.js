@@ -3,6 +3,7 @@ const path = require('path');
 const { loadConfig, saveConfig, DATA_DIR } = require('./config');
 const WhatsAppBot = require('./whatsapp');
 const SeerrApi = require('./seerr');
+const { AutoRestarter, parseTime } = require('./restart');
 const debug = require('./debug');
 
 const app = express();
@@ -21,6 +22,35 @@ const bot = new WhatsAppBot(config, {
 });
 
 const seerr = new SeerrApi(config);
+
+/**
+ * Daily auto-restart.
+ *  - mode 'container': tear down the WhatsApp client and exit the process so the
+ *    container runtime's restart policy brings the container back up fresh.
+ *  - mode 'bot':       keep the process alive, just re-create the WhatsApp client.
+ */
+const restarter = new AutoRestarter({
+  getConfig: () => config,
+  onRestart: async (reason, settings) => {
+    try {
+      await bot.stop();
+    } catch (e) {
+      console.warn('Error stopping WhatsApp client before restart:', e.message);
+    }
+    if (settings.resolvedMode === 'bot') {
+      if (config.whatsapp && config.whatsapp.enabled) {
+        await bot.start();
+        debug.log({ dir: 'system', event: 'auto-restart', detail: 'WhatsApp client restarted in place' });
+      } else {
+        debug.log({ dir: 'system', event: 'auto-restart', detail: 'WhatsApp bot disabled — nothing to reconnect' });
+      }
+      return;
+    }
+    // Let the browser close cleanly before the process goes away, so the next
+    // start does not trip over a stale Chromium profile lock.
+    setTimeout(() => process.exit(0), 1000);
+  }
+});
 
 function handleCommand({ cmd, args, reply, replyImage, number }) {
   const prefix = config.whatsapp.commandPrefix || '!';
@@ -287,6 +317,7 @@ async function applyConfig(newConfig) {
   }
   seerr.config = config;
   bot.cfg = config;
+  restarter.apply();
 
   const shouldRun = config.whatsapp && config.whatsapp.enabled;
   if (shouldRun && bot.getStatus().status !== 'ready' && !bot.isRunning) {
@@ -325,6 +356,16 @@ app.post('/api/config', (req, res) => {
           password: u.password || ''
         }));
     }
+    if (body.server && body.server.autoRestart) {
+      const ar = body.server.autoRestart;
+      body.server.autoRestart = {
+        ...(config.server.autoRestart || {}),
+        ...ar,
+        enabled: !!ar.enabled,
+        time: parseTime(ar.time) ? String(ar.time).trim() : (config.server.autoRestart || {}).time || '04:00',
+        mode: ['auto', 'container', 'bot'].includes(ar.mode) ? ar.mode : 'auto'
+      };
+    }
     const merged = {
       ...config,
       ...body,
@@ -337,7 +378,14 @@ app.post('/api/config', (req, res) => {
           ...((body.seerr && body.seerr.impersonate) || {})
         }
       },
-      server: { ...config.server, ...(body.server || {}) },
+      server: {
+        ...config.server,
+        ...(body.server || {}),
+        autoRestart: {
+          ...(config.server.autoRestart || {}),
+          ...((body.server && body.server.autoRestart) || {})
+        }
+      },
       app: { ...config.app, ...(body.app || {}) }
     };
     applyConfig(merged);
@@ -352,6 +400,7 @@ app.get('/api/status', (req, res) => {
     version: require('../package.json').version,
     gitSha: (process.env.GIT_SHA || 'dev').slice(0, 7),
     whatsapp: bot.getStatus(),
+    autoRestart: restarter.status(),
     seerr: {
       enabled: seerr.isEnabled(),
       configured: seerr.isConfigured(),
@@ -381,6 +430,13 @@ app.get('/api/debug/logs', (req, res) => {
 app.post('/api/debug/clear', (req, res) => {
   debug.clear();
   res.json({ success: true });
+});
+
+app.post('/api/restart/now', (req, res) => {
+  const s = restarter.settings();
+  // Answer first — in 'container' mode the process exits moments later.
+  res.json({ success: true, mode: s.resolvedMode });
+  setTimeout(() => restarter.trigger('manual'), 300);
 });
 
 app.post('/api/whatsapp/start', (req, res) => {
@@ -449,10 +505,11 @@ if (require.main === module) {
     if (config.whatsapp && config.whatsapp.enabled) {
       bot.start();
     }
+    restarter.start();
     if (config.seerr && !config.seerr.url) {
       console.log('Seerr is not configured. Open the web UI to configure it.');
     }
   });
 }
 
-module.exports = { app, config: () => config, applyConfig, handleCommand, bot, seerr, debug };
+module.exports = { app, config: () => config, applyConfig, handleCommand, bot, seerr, debug, restarter };

@@ -135,9 +135,32 @@ All settings are stored in `/data/config.json` at runtime and editable from the 
 
 - **WhatsApp**: enable/disable, command prefix, allowed phone numbers
 - **Seerr**: URL, API key, enabled toggle, and optional "Impersonate as user" (email + password)
-- **General**: app name, web UI port
+- **General**: app name, web UI port, daily auto-restart
 
 To make every request as a dedicated Seerr user (instead of the admin API key), either fill in the "Impersonate as user" fields in the web UI, or set the two environment variables below — they override the web UI at startup.
+
+### Daily auto-restart
+
+**General Settings → Auto-restart daily** restarts the bridge every day at the time
+you choose. This clears out stale WhatsApp Web sessions and reclaims memory.
+
+| Restart action | What it does |
+|----------------|--------------|
+| `Auto` | Container restart when running in Docker, otherwise reconnects the bot |
+| `Restart container` | Stops the WhatsApp client and exits the process — Docker restarts the container |
+| `Reconnect bot only` | Keeps the process running and only re-creates the WhatsApp client |
+
+> **Container restart requires a restart policy.** The shipped `docker-compose.yml`
+> and Unraid template already set `--restart unless-stopped`. Without one, a
+> container restart leaves the bridge down until you start it again.
+
+Notes:
+
+- The restart time is interpreted in the container's local timezone (set `TZ`).
+- A missed slot is **not** caught up on: if the container boots after the
+  scheduled time, the next restart is the following day. This prevents the
+  container from restarting in a loop.
+- "Restart now" in the web UI triggers the same action immediately.
 
 ## Environment Variables
 
@@ -148,12 +171,15 @@ To make every request as a dedicated Seerr user (instead of the admin API key), 
 | `CHROME_PATH` | unset | Optional: path to a custom Chrome binary; Puppeteer's own Chrome is used by default |
 | `SEERR_IMPERSONATE_EMAIL` | unset | Seerr login to impersonate (e.g. `request`) — overrides web UI at startup |
 | `SEERR_IMPERSONATE_PASSWORD` | unset | Password for the impersonated Seerr user — never commit this to a repo |
+| `TZ` | unset | Timezone used by the daily auto-restart schedule (e.g. `Europe/Amsterdam`) |
 
 ## Notes
 
 - The first container start downloads/provisions nothing; Chromium ships with the image.
 - Keep the `/data` volume mapped — it stores your WhatsApp session and config.
 - Only phone numbers in **Allowed Phone Numbers** can use the bot. Empty = everyone allowed.
+- The daily auto-restart exits the process in "Restart container" mode — always run the
+  container with a restart policy (`--restart unless-stopped`).
 
 ## Disclaimer
 

@@ -39,7 +39,14 @@ const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 
 const DEFAULT_CONFIG = {
   server: {
-    port: 7000
+    port: 7000,
+    autoRestart: {
+      enabled: false,
+      time: '04:00',
+      // 'auto' | 'container' | 'bot'
+      // 'auto' = restart the container when running in Docker, else reconnect the bot
+      mode: 'auto'
+    }
   },
   whatsapp: {
     enabled: false,
