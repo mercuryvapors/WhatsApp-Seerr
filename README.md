@@ -27,7 +27,7 @@ Example:
 !pick 1
 !yes
 ```
-A media type (`movie` or `tv`) is required — the bot lists the top 5 matches, you pick one with `!pick 1-5`, then confirm the cover art with `!yes` (or `!no` to cancel).
+A media type (`movie` or `tv`) is required — the bot lists the top 5 matches, you pick one with `!pick 1 of 5`, then confirm the cover art with `!yes` (or `!no` to cancel).
 
 ## Setup
 

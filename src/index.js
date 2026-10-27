@@ -250,7 +250,7 @@ async function handleRequest(args, reply, number) {
     items.forEach((r, i) => {
       lines.push(`${i + 1}. ${mediaIcon(r.mediaType)} ${resultTitle(r)} ${resultYear(r)}`.trim());
     });
-    lines.push('', `Reply *!pick 1-${items.length}* to request one.`);
+    lines.push('', `Reply *!pick 1 of ${items.length}* to request one.`);
     return reply(lines.join('\n'));
   } catch (e) {
     return reply(`❌ Search failed: ${e.message}`);
